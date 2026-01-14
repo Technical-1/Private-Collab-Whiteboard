@@ -40,6 +40,7 @@ import {
   ZOOM_WHEEL_STEP,
   FIT_PADDING
 } from './config.js';
+import { saveBoard, getBoard } from './board-history.js';
 
 let yjsInstance = null;
 let boardManager = null;
@@ -101,6 +102,16 @@ async function main() {
   }
   // Set read-only mode in drawing module (enforces in JavaScript, not just CSS)
   setReadOnlyMode(readOnly);
+
+  // Save/update board in history
+  const existingBoard = getBoard(roomId);
+  const role = readOnly ? 'viewer' : (existingBoard?.role || 'collaborator');
+  saveBoard({
+    roomId: roomId,
+    roomName: existingBoard?.roomName || roomId,
+    role: role,
+    isEncrypted: isEncrypted
+  });
 
   // Initialize user awareness with callback for live drawing updates
   const { color } = initializeAwareness(awareness, userName, () => {

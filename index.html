@@ -24,7 +24,19 @@
       </svg>
       <span>Whiteboard</span>
     </div>
-    <a href="#features" class="nav-link">Features</a>
+    <div class="nav-links">
+      <a href="#features" class="nav-link">Features</a>
+      <a href="/boards.html" id="my-boards-link" class="nav-link my-boards-link" style="display: none;">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="7" height="7"/>
+          <rect x="14" y="3" width="7" height="7"/>
+          <rect x="14" y="14" width="7" height="7"/>
+          <rect x="3" y="14" width="7" height="7"/>
+        </svg>
+        My Boards
+        <span id="board-count-badge" class="board-count-badge"></span>
+      </a>
+    </div>
   </nav>
 
   <!-- Hero Section -->
@@ -243,11 +255,29 @@
 
   <script type="module">
     import { generateRoomId } from './js/utils.js';
+    import { saveBoard, getBoardCount, hasSavedBoards } from './js/board-history.js';
+
+    // Show My Boards link if user has saved boards
+    if (hasSavedBoards()) {
+      const myBoardsLink = document.getElementById('my-boards-link');
+      const boardCountBadge = document.getElementById('board-count-badge');
+      myBoardsLink.style.display = 'flex';
+      boardCountBadge.textContent = getBoardCount();
+    }
 
     // Create room handlers
     const createRoom = () => {
       const roomId = generateRoomId();
       const password = document.getElementById('room-password').value;
+
+      // Save to board history as owner
+      saveBoard({
+        roomId: roomId,
+        roomName: roomId,
+        role: 'owner',
+        isEncrypted: !!password
+      });
+
       if (password) {
         window.location.href = `/room/${roomId}#${encodeURIComponent(password)}`;
       } else {
@@ -287,6 +317,14 @@
         document.getElementById('room-code').focus();
         return;
       }
+
+      // Save to board history as collaborator (will be upgraded to viewer if read-only)
+      saveBoard({
+        roomId: roomCode,
+        roomName: roomCode,
+        role: 'collaborator',
+        isEncrypted: !!password
+      });
 
       if (password) {
         window.location.href = `/room/${roomCode}#${encodeURIComponent(password)}`;

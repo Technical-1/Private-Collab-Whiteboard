@@ -8,6 +8,7 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, 'index.html'),
         room: resolve(__dirname, 'room.html'),
+        boards: resolve(__dirname, 'boards.html'),
       },
     },
   },
