@@ -1,0 +1,26 @@
+{
+  "name": "whiteboard-yjs",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "dev:party": "partykit dev",
+    "dev:all": "concurrently \"npm run dev\" \"npm run dev:party\"",
+    "build": "vite build",
+    "preview": "vite preview",
+    "deploy:party": "partykit deploy"
+  },
+  "dependencies": {
+    "lib0": "^0.2.117",
+    "partykit": "^0.0.115",
+    "partysocket": "^1.1.10",
+    "y-indexeddb": "^9.0.0",
+    "y-partykit": "^0.0.33",
+    "y-protocols": "^1.0.7",
+    "yjs": "^13.6.0"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2",
+    "vite": "^5.0.0"
+  }
+}
