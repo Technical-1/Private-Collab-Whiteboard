@@ -8,7 +8,8 @@
     "dev:all": "concurrently \"npm run dev\" \"npm run dev:party\"",
     "build": "vite build",
     "preview": "vite preview",
-    "deploy:party": "partykit deploy"
+    "deploy:party": "partykit deploy",
+    "generate-icons": "node scripts/generate-icons.js"
   },
   "dependencies": {
     "lib0": "^0.2.117",
@@ -21,6 +22,7 @@
   },
   "devDependencies": {
     "concurrently": "^8.2.2",
+    "sharp": "^0.34.5",
     "vite": "^5.0.0"
   }
 }
