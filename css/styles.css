@@ -574,6 +574,21 @@ body {
   font-size: 0.9rem;
 }
 
+.footer-author {
+  display: flex;
+  align-items: center;
+  opacity: 0.5;
+  transition: opacity 0.2s ease;
+}
+
+.footer-author:hover {
+  opacity: 1;
+}
+
+.footer-author img {
+  display: block;
+}
+
 /* ============================================
    ROOM PAGE STYLES (New Dark Theme)
    ============================================ */
@@ -1549,10 +1564,6 @@ canvas {
     padding: 0 12px;
   }
 
-  .room-page .header-center {
-    display: none;
-  }
-
   .room-page .side-panel {
     width: 100%;
     max-width: 320px;
@@ -1599,8 +1610,9 @@ canvas {
 
   .room-page .options-panel {
     flex-wrap: wrap;
-    max-width: calc(100% - 32px);
     justify-content: center;
+    gap: 12px 16px;
+    max-width: 320px;
   }
 
   .room-page .option-divider {
@@ -2366,7 +2378,7 @@ body:not(.read-only-mode) .read-only-banner {
 
 .zoom-panel {
   position: fixed;
-  bottom: 24px;
+  top: 72px;
   left: 24px;
   display: flex;
   align-items: center;
@@ -2431,10 +2443,6 @@ body:not(.read-only-mode) .read-only-banner {
   margin: 0 4px;
 }
 
-/* Hide zoom controls in read-only mode banner area */
-.read-only-mode .zoom-panel {
-  bottom: 80px;
-}
 
 /* ============================================
    MOBILE / TOUCH SUPPORT
@@ -2488,15 +2496,32 @@ body:not(.read-only-mode) .read-only-banner {
 
   /* Larger shape controls for touch */
   .shape-control-btn {
-    width: 40px;
-    height: 40px;
+    width: 44px;
+    height: 44px;
     font-size: 20px;
   }
 
+  /* Larger zoom controls for touch */
+  .zoom-btn {
+    width: 44px;
+    height: 44px;
+  }
+
+  .zoom-level-btn {
+    height: 44px;
+    min-width: 70px;
+  }
+
   /* Larger options panel inputs */
-  .stroke-presets button {
+  .preset-btn {
     width: 36px;
     height: 36px;
+  }
+
+  /* Larger color picker for touch */
+  .options-panel input[type="color"] {
+    width: 40px;
+    height: 40px;
   }
 
   /* Easier to use sliders */
@@ -2539,14 +2564,17 @@ body:not(.read-only-mode) .read-only-banner {
 
   .toolbar-panel {
     max-width: calc(100vw - 24px);
+    left: 50%;
+    transform: translateX(-50%);
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
   }
 
   .options-panel {
     max-width: calc(100vw - 24px);
-    left: 12px;
-    right: auto;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: 76px;
   }
 
   /* Stack tool groups vertically on very narrow screens */
@@ -2649,6 +2677,8 @@ body:not(.read-only-mode) .read-only-banner {
   .zoom-panel {
     padding: 6px;
     gap: 4px;
+    left: 12px;
+    top: 68px;
   }
 
   .zoom-btn {
