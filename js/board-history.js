@@ -39,10 +39,14 @@ export function saveBoard(boardInfo) {
     const now = new Date().toISOString();
 
     if (existingIndex >= 0) {
-      // Update existing board
+      // Update existing board - but preserve 'owner' role (never downgrade)
+      const existingRole = boards[existingIndex].role;
+      const newRole = existingRole === 'owner' ? 'owner' : boardInfo.role;
+
       boards[existingIndex] = {
         ...boards[existingIndex],
         ...boardInfo,
+        role: newRole, // Preserve owner status
         lastAccessed: now,
         accessCount: (boards[existingIndex].accessCount || 1) + 1
       };
