@@ -42,13 +42,13 @@
     <rect x="0" y="0" width="200" height="50" rx="25" fill="rgba(99, 102, 241, 0.2)"/>
     <text x="100" y="32" font-family="system-ui, sans-serif" font-size="18" fill="#818cf8" text-anchor="middle">No Account Required</text>
   </g>
-  <g transform="translate(220, 400)">
-    <rect x="0" y="0" width="160" height="50" rx="25" fill="rgba(99, 102, 241, 0.2)"/>
-    <text x="80" y="32" font-family="system-ui, sans-serif" font-size="18" fill="#818cf8" text-anchor="middle">P2P Sync</text>
+  <g transform="translate(320, 400)">
+    <rect x="0" y="0" width="130" height="50" rx="25" fill="rgba(99, 102, 241, 0.2)"/>
+    <text x="65" y="32" font-family="system-ui, sans-serif" font-size="18" fill="#818cf8" text-anchor="middle">P2P Sync</text>
   </g>
-  <g transform="translate(400, 400)">
-    <rect x="0" y="0" width="180" height="50" rx="25" fill="rgba(99, 102, 241, 0.2)"/>
-    <text x="90" y="32" font-family="system-ui, sans-serif" font-size="18" fill="#818cf8" text-anchor="middle">Works Offline</text>
+  <g transform="translate(470, 400)">
+    <rect x="0" y="0" width="160" height="50" rx="25" fill="rgba(99, 102, 241, 0.2)"/>
+    <text x="80" y="32" font-family="system-ui, sans-serif" font-size="18" fill="#818cf8" text-anchor="middle">Works Offline</text>
   </g>
 
   <!-- Decorative elements - cursors -->
