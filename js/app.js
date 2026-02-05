@@ -70,7 +70,7 @@ async function main() {
   }
 
   // Get password from URL hash (if encrypted room)
-  const password = getPasswordFromUrl();
+  const password = await getPasswordFromUrl();
 
   // Initialize modal system
   initModals();
@@ -96,7 +96,7 @@ async function main() {
   updateEncryptionIndicator(isEncrypted);
 
   // Check read-only mode
-  readOnly = isReadOnly();
+  readOnly = await isReadOnly();
   if (readOnly) {
     document.body.classList.add('read-only-mode');
   }
@@ -302,7 +302,7 @@ async function main() {
   };
 
   // Wire up share link
-  const shareLink = getShareableLink(false);
+  const shareLink = await getShareableLink(false);
   document.getElementById('share-link').value = shareLink;
 
   // Show/hide password controls based on encryption status
@@ -314,7 +314,7 @@ async function main() {
   // Simple copy link button
   document.getElementById('copy-link').onclick = async () => {
     const includePassword = document.getElementById('include-password')?.checked || false;
-    const link = getShareableLink(includePassword);
+    const link = await getShareableLink(includePassword);
     copyToClipboard(link);
 
     if (isEncrypted && !includePassword) {
@@ -329,12 +329,12 @@ async function main() {
   if (inviteBtn) {
     inviteBtn.onclick = async () => {
       const includePassword = document.getElementById('include-password')?.checked || false;
-      const link = getShareableLink(includePassword);
+      const link = await getShareableLink(includePassword);
 
       // Listen for link update requests from the modal
-      const handleLinkUpdate = (e) => {
+      const handleLinkUpdate = async (e) => {
         const { permission, includePassword: includePass } = e.detail;
-        const newLink = getShareableLink(includePass, permission);
+        const newLink = await getShareableLink(includePass, permission);
         window.dispatchEvent(new CustomEvent('invite-link-updated', { detail: { link: newLink } }));
       };
       window.addEventListener('update-invite-link', handleLinkUpdate);

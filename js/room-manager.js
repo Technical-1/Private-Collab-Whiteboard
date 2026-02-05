@@ -1,33 +1,49 @@
 import { generateRoomId } from './utils.js';
+import { generateHmacSignature } from './crypto.js';
 
-// Secret salt for signature (doesn't need to be truly secret since it's client-side,
-// but makes casual tampering harder)
-const SIGNATURE_SALT = 'REDACTED';
+// HMAC salt for new signatures
+const HMAC_SALT = 'REDACTED';
+
+// Legacy salt (kept for backwards compatibility)
+const LEGACY_SIGNATURE_SALT = 'REDACTED';
 
 /**
- * Generate a simple signature for the token
- * This prevents casual URL tampering (changing "view" to "edit")
+ * Generate an HMAC-SHA256 signature for the token (new format)
  */
-function generateSignature(password, role) {
-  const data = password + role + SIGNATURE_SALT;
-  // Simple hash: use btoa and take first 8 chars
+async function generateSignature(password, role) {
+  return generateHmacSignature(password + role, HMAC_SALT);
+}
+
+/**
+ * Verify the HMAC token signature is valid
+ */
+async function verifySignature(password, role, signature) {
+  const expected = await generateSignature(password, role);
+  return expected === signature;
+}
+
+/**
+ * Generate a legacy btoa-based signature (for backwards compat verification)
+ */
+function generateLegacySignature(password, role) {
+  const data = password + role + LEGACY_SIGNATURE_SALT;
   const encoded = btoa(encodeURIComponent(data));
   return encoded.substring(0, 8);
 }
 
 /**
- * Verify the token signature is valid
+ * Verify a legacy btoa-based signature
  */
-function verifySignature(password, role, signature) {
-  return generateSignature(password, role) === signature;
+function verifyLegacySignature(password, role, signature) {
+  return generateLegacySignature(password, role) === signature;
 }
 
 /**
- * Encode password and role into a URL-safe token
- * Format: base64(JSON({p: password, r: role, s: signature}))
+ * Encode password and role into a URL-safe token with HMAC signature
+ * Format: base64(JSON({p: password, r: role, s: hmac_signature}))
  */
-export function encodeAccessToken(password, role = 'edit') {
-  const signature = generateSignature(password, role);
+export async function encodeAccessToken(password, role = 'edit') {
+  const signature = await generateSignature(password, role);
   const token = {
     p: password,
     r: role,
@@ -39,8 +55,9 @@ export function encodeAccessToken(password, role = 'edit') {
 /**
  * Decode an access token from URL hash
  * Returns { password, role } or null if invalid
+ * Supports: HMAC tokens, legacy btoa tokens, and raw password format
  */
-export function decodeAccessToken(token) {
+export async function decodeAccessToken(token) {
   try {
     const decoded = JSON.parse(decodeURIComponent(atob(token)));
 
@@ -49,21 +66,30 @@ export function decodeAccessToken(token) {
       return null;
     }
 
-    // Verify signature
-    if (!verifySignature(decoded.p, decoded.r, decoded.s)) {
-      console.warn('Invalid token signature - possible tampering');
-      return null;
+    // Try new HMAC signature first
+    if (await verifySignature(decoded.p, decoded.r, decoded.s)) {
+      return {
+        password: decoded.p,
+        role: decoded.r
+      };
     }
 
-    return {
-      password: decoded.p,
-      role: decoded.r
-    };
+    // Fall back to legacy btoa signature
+    if (verifyLegacySignature(decoded.p, decoded.r, decoded.s)) {
+      return {
+        password: decoded.p,
+        role: decoded.r
+      };
+    }
+
+    console.warn('Invalid token signature - possible tampering');
+    return null;
   } catch (e) {
     // Try legacy format (just password in hash)
     try {
       const password = decodeURIComponent(token);
-      // If it's a simple string (old format), treat as edit access
+      // If it's a simple string (old format), treat as edit access.
+      // Exclude strings starting with '{' to avoid treating malformed JSON tokens as passwords.
       if (password && !password.startsWith('{')) {
         return {
           password: password,
@@ -81,11 +107,11 @@ export function decodeAccessToken(token) {
  * Create a new room and navigate to it
  * @param {string|null} password - Optional password for E2E encryption
  */
-export function createRoom(password = null) {
+export async function createRoom(password = null) {
   const roomId = generateRoomId();
 
   if (password) {
-    const token = encodeAccessToken(password, 'edit');
+    const token = await encodeAccessToken(password, 'edit');
     window.location.href = `/room/${roomId}#${token}`;
   } else {
     window.location.href = `/room/${roomId}`;
@@ -98,13 +124,13 @@ export function createRoom(password = null) {
  * @param {string|null} password - Optional password for encrypted rooms
  * @param {string} role - Permission level ('edit' or 'view')
  */
-export function joinRoom(roomId, password = null, role = 'edit') {
+export async function joinRoom(roomId, password = null, role = 'edit') {
   if (!roomId || !roomId.trim()) return;
 
   const cleanRoomId = roomId.trim();
 
   if (password) {
-    const token = encodeAccessToken(password, role);
+    const token = await encodeAccessToken(password, role);
     window.location.href = `/room/${cleanRoomId}#${token}`;
   } else {
     window.location.href = `/room/${cleanRoomId}`;
@@ -123,11 +149,11 @@ export function getRoomIdFromUrl() {
  * Get access info from URL hash
  * Returns { password, role } or { password: null, role: 'edit' } for unencrypted rooms
  */
-export function getAccessFromUrl() {
+export async function getAccessFromUrl() {
   const hash = window.location.hash;
   if (hash && hash.length > 1) {
     const token = hash.substring(1);
-    const decoded = decodeAccessToken(token);
+    const decoded = await decodeAccessToken(token);
     if (decoded) {
       return decoded;
     }
@@ -138,29 +164,29 @@ export function getAccessFromUrl() {
 /**
  * Extract password from URL (for encryption)
  */
-export function getPasswordFromUrl() {
-  return getAccessFromUrl().password;
+export async function getPasswordFromUrl() {
+  return (await getAccessFromUrl()).password;
 }
 
 /**
  * Get permission level from URL
  */
-export function getPermissionFromUrl() {
-  return getAccessFromUrl().role;
+export async function getPermissionFromUrl() {
+  return (await getAccessFromUrl()).role;
 }
 
 /**
  * Check if current room is encrypted (has password)
  */
-export function isEncryptedRoom() {
-  return !!getPasswordFromUrl();
+export async function isEncryptedRoom() {
+  return !!(await getPasswordFromUrl());
 }
 
 /**
  * Check if current user is in read-only mode
  */
-export function isReadOnly() {
-  return getPermissionFromUrl() === 'view';
+export async function isReadOnly() {
+  return (await getPermissionFromUrl()) === 'view';
 }
 
 /**
@@ -168,13 +194,13 @@ export function isReadOnly() {
  * @param {boolean} includePassword - Whether to include password in link
  * @param {string} permission - Permission level ('edit' or 'view')
  */
-export function getShareableLink(includePassword = false, permission = 'edit') {
+export async function getShareableLink(includePassword = false, permission = 'edit') {
   const baseUrl = window.location.origin + window.location.pathname;
 
   if (includePassword) {
-    const access = getAccessFromUrl();
+    const access = await getAccessFromUrl();
     if (access.password) {
-      const token = encodeAccessToken(access.password, permission);
+      const token = await encodeAccessToken(access.password, permission);
       return `${baseUrl}#${token}`;
     }
   }
@@ -186,12 +212,12 @@ export function getShareableLink(includePassword = false, permission = 'edit') {
  * Update the room password (changes URL hash)
  * @param {string|null} newPassword - New password (null to remove encryption)
  */
-export function updatePassword(newPassword) {
+export async function updatePassword(newPassword) {
   const roomId = getRoomIdFromUrl();
   if (!roomId) return;
 
   if (newPassword) {
-    const token = encodeAccessToken(newPassword, 'edit');
+    const token = await encodeAccessToken(newPassword, 'edit');
     window.location.hash = token;
   } else {
     // Remove hash without page reload
