@@ -117,26 +117,28 @@ vercel --prod
 ## Architecture
 
 ```
-├── index.html         # Landing page
-├── room.html          # Main whiteboard app
+├── index.html          # Landing page
+├── room.html           # Main whiteboard app
+├── boards.html         # Board history page
 ├── css/
 │   └── styles.css     # All styles
 ├── js/
-│   ├── app.js         # Main entry point
-│   ├── yjs-setup.js   # Y.js document & provider setup
+│   ├── app.js          # Main entry point
+│   ├── yjs-setup.js    # Y.js document & provider setup
 │   ├── sync-provider.js # PartyKit WebSocket provider
-│   ├── awareness.js   # User presence & cursors
-│   ├── drawing.js     # Canvas rendering & interactions
-│   ├── boards.js      # Multi-board management
-│   ├── undo-redo.js   # Undo/redo with Y.UndoManager
-│   ├── modal.js       # Modal dialog system
-│   ├── crypto.js      # Encryption utilities
+│   ├── awareness.js    # User presence & cursors
+│   ├── drawing.js      # Canvas rendering & interactions
+│   ├── boards.js       # Multi-board management
+│   ├── board-history.js # Board visit history (localStorage)
+│   ├── undo-redo.js    # Undo/redo with Y.UndoManager
+│   ├── modal.js        # Modal dialog system
+│   ├── crypto.js       # Encryption utilities
 │   ├── room-manager.js # Room URL & password handling
-│   ├── config.js      # App configuration
-│   └── utils.js       # Helper functions
+│   ├── config.js       # App configuration
+│   └── utils.js        # Helper functions
 ├── party/
-│   └── index.ts       # PartyKit server
-└── vercel.json        # Vercel configuration
+│   └── index.ts        # PartyKit server
+└── vercel.json         # Vercel configuration
 ```
 
 ### Data Model
@@ -191,9 +193,9 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 4. Push to the branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
-## License
+## Author
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+Jacob Kanfer - [GitHub](https://github.com/Technical-1)
 
 ## Acknowledgments
 
