@@ -16,6 +16,42 @@ let boards = null;
 let awareness = null;
 let getCurrentBoard = null;
 
+// ============ Collaborative Text Editing Lock ============
+
+function broadcastEditingText(shapeId) {
+  if (!awareness) return;
+  const state = awareness.getLocalState();
+  if (state) {
+    awareness.setLocalState({
+      ...state,
+      user: { ...state.user, editingTextId: shapeId }
+    });
+  }
+}
+
+function clearEditingTextBroadcast() {
+  if (!awareness) return;
+  const state = awareness.getLocalState();
+  if (state && state.user?.editingTextId) {
+    awareness.setLocalState({
+      ...state,
+      user: { ...state.user, editingTextId: null }
+    });
+  }
+}
+
+function getRemoteEditingUser(shapeId) {
+  if (!awareness) return null;
+  const states = awareness.getStates();
+  for (const [clientId, state] of states) {
+    if (clientId === awareness.clientID) continue;
+    if (state?.user?.editingTextId === shapeId) {
+      return state.user;
+    }
+  }
+  return null;
+}
+
 // Read-only mode - prevents all mutations
 let readOnlyMode = false;
 let readOnlyWarningShown = false;
@@ -178,6 +214,34 @@ const eventListeners = [];
 let boardsMapObserver = null;
 
 /**
+ * Reset all in-progress drawing state.
+ * Called when switching boards to prevent state from bleeding across boards.
+ */
+function resetDrawingState() {
+  drawing = false;
+  freehandPoints = [];
+
+  clearEditingTextBroadcast();
+  if (editingTextId || textInput) {
+    finishTextEditing();
+  }
+  if (creatingTextAt) {
+    finishTextCreation();
+  }
+
+  selectedIds.clear();
+  hoveredId = null;
+  isDragging = false;
+  dragStartX = 0;
+  dragStartY = 0;
+  dragOffsetX = 0;
+  dragOffsetY = 0;
+
+  clearCurrentDrawing();
+  hideShapeControls(true);
+}
+
+/**
  * Helper to add event listener with tracking for cleanup
  */
 function addTrackedListener(element, event, handler, options) {
@@ -212,6 +276,7 @@ export function cleanup() {
   hideShapeControls(true);
 
   // Clean up text input if open
+  clearEditingTextBroadcast();
   if (textInput) {
     textInput.remove();
     textInput = null;
@@ -1470,6 +1535,13 @@ function startTextEditing(shape) {
     return;
   }
 
+  // Check if another user is already editing this text
+  const editingUser = getRemoteEditingUser(shape.id);
+  if (editingUser) {
+    showAlert('Text Being Edited', `This text is currently being edited by ${editingUser.name}.`);
+    return;
+  }
+
   // Finish any text creation first
   if (creatingTextAt) {
     finishTextCreation();
@@ -1486,6 +1558,7 @@ function startTextEditing(shape) {
   }
 
   editingTextId = shape.id;
+  broadcastEditingText(shape.id);
 
   // Convert world coordinates to screen coordinates for input positioning
   const screenPos = worldToScreen(shape.x, shape.y);
@@ -1521,6 +1594,7 @@ function startTextEditing(shape) {
     if (e.key === 'Enter') {
       finishTextEditing();
     } else if (e.key === 'Escape') {
+      clearEditingTextBroadcast();
       editingTextId = null;
       textInput.remove();
       textInput = null;
@@ -1585,6 +1659,7 @@ function finishTextEditing() {
     updateShapeProperty(editingTextId, 'text', newText);
   }
 
+  clearEditingTextBroadcast();
   editingTextId = null;
   textInput.remove();
   textInput = null;
@@ -1988,6 +2063,9 @@ function addDrawing(data) {
  * @param {string} boardName - Name of the board to subscribe to
  */
 export function subscribeToBoard(boardName) {
+  // Clear any in-progress drawing state from the previous board
+  resetDrawingState();
+
   // Unsubscribe from previous board
   if (currentBoardObserver) {
     currentBoardObserver();

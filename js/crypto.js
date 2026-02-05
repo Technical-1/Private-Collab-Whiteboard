@@ -131,3 +131,23 @@ export function generatePassword(length = 16) {
   const randomValues = crypto.getRandomValues(new Uint8Array(length));
   return Array.from(randomValues, (v) => charset[v % charset.length]).join('');
 }
+
+/**
+ * Generate an HMAC-SHA256 signature for data using a salt as key.
+ * Returns a truncated Base64 string suitable for URL tokens.
+ *
+ * @param {string} data - The data to sign
+ * @param {string} salt - The HMAC key
+ * @returns {Promise<string>} - 16-char Base64 signature
+ */
+export async function generateHmacSignature(data, salt) {
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw', encoder.encode(salt),
+    { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']
+  );
+  const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(data));
+  // Safe to spread: HMAC-SHA256 output is always exactly 32 bytes.
+  // Do not reuse this pattern for arbitrarily large data (stack overflow risk).
+  return btoa(String.fromCharCode(...new Uint8Array(signature))).substring(0, 16);
+}

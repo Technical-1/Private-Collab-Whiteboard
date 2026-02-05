@@ -296,6 +296,7 @@
   <script type="module">
     import { generateRoomId } from './js/utils.js';
     import { saveBoard, getBoardCount, hasSavedBoards } from './js/board-history.js';
+    import { encodeAccessToken } from './js/room-manager.js';
 
     // Show My Boards link if user has saved boards
     if (hasSavedBoards()) {
@@ -306,7 +307,7 @@
     }
 
     // Create room handlers
-    const createRoom = () => {
+    const createRoom = async () => {
       const roomId = generateRoomId();
       const password = document.getElementById('room-password').value;
 
@@ -319,7 +320,8 @@
       });
 
       if (password) {
-        window.location.href = `/room/${roomId}#${encodeURIComponent(password)}`;
+        const token = await encodeAccessToken(password, 'edit');
+        window.location.href = `/room/${roomId}#${token}`;
       } else {
         window.location.href = `/room/${roomId}`;
       }
@@ -349,7 +351,7 @@
     });
 
     // Join room handler
-    document.getElementById('join-room').addEventListener('click', () => {
+    document.getElementById('join-room').addEventListener('click', async () => {
       const roomCode = document.getElementById('room-code').value.trim();
       const password = document.getElementById('join-password').value;
 
@@ -367,7 +369,8 @@
       });
 
       if (password) {
-        window.location.href = `/room/${roomCode}#${encodeURIComponent(password)}`;
+        const token = await encodeAccessToken(password, 'edit');
+        window.location.href = `/room/${roomCode}#${token}`;
       } else {
         window.location.href = `/room/${roomCode}`;
       }
