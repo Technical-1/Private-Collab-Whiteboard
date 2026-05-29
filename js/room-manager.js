@@ -1,104 +1,41 @@
 import { generateRoomId } from './utils.js';
-import { generateHmacSignature } from './crypto.js';
-
-// HMAC salt for new signatures
-const HMAC_SALT = 'wb-2024-hmac';
-
-// Legacy salt (kept for backwards compatibility)
-const LEGACY_SIGNATURE_SALT = 'wb-2024-sig';
 
 /**
- * Generate an HMAC-SHA256 signature for the token (new format)
+ * Encode an editor capability link payload (goes after '#').
+ * Carries both private (sk, PKCS8 base64) and public (pk, raw base64) keys.
  */
-async function generateSignature(password, role) {
-  return generateHmacSignature(password + role, HMAC_SALT);
+export function encodeEditorLink(password, privateKeyB64, publicKeyB64, epoch) {
+  const token = { v: 2, p: password, r: 'edit', e: epoch, sk: privateKeyB64, pk: publicKeyB64 };
+  return btoa(encodeURIComponent(JSON.stringify(token)));
 }
 
-/**
- * Verify the HMAC token signature is valid
- */
-async function verifySignature(password, role, signature) {
-  const expected = await generateSignature(password, role);
-  return expected === signature;
-}
-
-/**
- * Generate a legacy btoa-based signature (for backwards compat verification)
- */
-function generateLegacySignature(password, role) {
-  const data = password + role + LEGACY_SIGNATURE_SALT;
-  const encoded = btoa(encodeURIComponent(data));
-  return encoded.substring(0, 8);
-}
-
-/**
- * Verify a legacy btoa-based signature
- */
-function verifyLegacySignature(password, role, signature) {
-  return generateLegacySignature(password, role) === signature;
-}
-
-/**
- * Encode password and role into a URL-safe token with HMAC signature
- * Format: base64(JSON({p: password, r: role, s: hmac_signature}))
- */
-export async function encodeAccessToken(password, role = 'edit') {
-  const signature = await generateSignature(password, role);
-  const token = {
-    p: password,
-    r: role,
-    s: signature
-  };
+/** Encode a viewer capability link payload (public key only). */
+export function encodeViewerLink(password, publicKeyB64, epoch) {
+  const token = { v: 2, p: password, r: 'view', e: epoch, pk: publicKeyB64 };
   return btoa(encodeURIComponent(JSON.stringify(token)));
 }
 
 /**
- * Decode an access token from URL hash
- * Returns { password, role } or null if invalid
- * Supports: HMAC tokens, legacy btoa tokens, and raw password format
+ * Decode a capability token. Returns a normalized capability or null.
+ * Hard break: only v:2 tokens are accepted. An 'edit' token without a private
+ * key is downgraded to 'view' (no key => cannot sign).
+ * @returns {{version:2, password:string, role:'edit'|'view', epoch:number,
+ *            privateKeyB64:string|null, publicKeyB64:string}|null}
  */
-export async function decodeAccessToken(token) {
+export function decodeCapabilityToken(token) {
   try {
-    const decoded = JSON.parse(decodeURIComponent(atob(token)));
-
-    // Verify required fields exist
-    if (!decoded.p || !decoded.r || !decoded.s) {
-      return null;
-    }
-
-    // Try new HMAC signature first
-    if (await verifySignature(decoded.p, decoded.r, decoded.s)) {
-      return {
-        password: decoded.p,
-        role: decoded.r
-      };
-    }
-
-    // Fall back to legacy btoa signature
-    if (verifyLegacySignature(decoded.p, decoded.r, decoded.s)) {
-      return {
-        password: decoded.p,
-        role: decoded.r
-      };
-    }
-
-    console.warn('Invalid token signature - possible tampering');
-    return null;
-  } catch (e) {
-    // Try legacy format (just password in hash)
-    try {
-      const password = decodeURIComponent(token);
-      // If it's a simple string (old format), treat as edit access.
-      // Exclude strings starting with '{' to avoid treating malformed JSON tokens as passwords.
-      if (password && !password.startsWith('{')) {
-        return {
-          password: password,
-          role: 'edit'  // Legacy links get edit access
-        };
-      }
-    } catch (e2) {
-      // Ignore
-    }
+    const d = JSON.parse(decodeURIComponent(atob(token)));
+    if (d.v !== 2 || !d.p || !d.pk || typeof d.e !== 'number') return null;
+    const hasPriv = d.r === 'edit' && typeof d.sk === 'string' && d.sk.length > 0;
+    return {
+      version: 2,
+      password: d.p,
+      role: hasPriv ? 'edit' : 'view',
+      epoch: d.e,
+      privateKeyB64: hasPriv ? d.sk : null,
+      publicKeyB64: d.pk,
+    };
+  } catch {
     return null;
   }
 }
