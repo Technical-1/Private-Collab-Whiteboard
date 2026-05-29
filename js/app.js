@@ -10,12 +10,10 @@ import { setupDrawing, subscribeToBoard, getTexts, getCanvas, screenToWorld, get
 import { setupBoardManager, setBoardsContainer } from './boards.js';
 import {
   getRoomIdFromUrl,
-  getPasswordFromUrl,
+  getCapabilityFromUrl,
   getShareableLink,
   copyToClipboard,
-  isEncryptedRoom,
-  getPermissionFromUrl,
-  isReadOnly
+  isEncryptedRoom
 } from './room-manager.js';
 import {
   initModals,
@@ -69,8 +67,8 @@ async function main() {
     return;
   }
 
-  // Get password from URL hash (if encrypted room)
-  const password = await getPasswordFromUrl();
+  // Get capability from URL hash (null for unencrypted rooms)
+  const cap = getCapabilityFromUrl();
 
   // Initialize modal system
   initModals();
@@ -85,18 +83,18 @@ async function main() {
   }
 
   // Show loading state
-  updateStatus(password ? 'Encrypting...' : 'Connecting...');
+  updateStatus(cap ? 'Encrypting...' : 'Connecting...');
 
   // Initialize Y.js (with or without encryption)
   // This also waits for IndexedDB to sync (load local data)
-  yjsInstance = await initializeYjs(roomId, password);
-  const { boards, awareness, isEncrypted } = yjsInstance;
+  yjsInstance = await initializeYjs(roomId, cap);
+  const { boards, awareness, isEncrypted, role } = yjsInstance;
 
   // Update UI to show encryption status
   updateEncryptionIndicator(isEncrypted);
 
-  // Check read-only mode
-  readOnly = await isReadOnly();
+  // Check read-only mode (derived from role in capability)
+  readOnly = role === 'view';
   if (readOnly) {
     document.body.classList.add('read-only-mode');
   }
@@ -105,11 +103,11 @@ async function main() {
 
   // Save/update board in history
   const existingBoard = getBoard(roomId);
-  const role = readOnly ? 'viewer' : (existingBoard?.role || 'collaborator');
+  const historyRole = readOnly ? 'viewer' : (existingBoard?.role || 'collaborator');
   saveBoard({
     roomId: roomId,
     roomName: existingBoard?.roomName || roomId,
-    role: role,
+    role: historyRole,
     isEncrypted: isEncrypted
   });
 
@@ -302,7 +300,7 @@ async function main() {
   };
 
   // Wire up share link
-  const shareLink = await getShareableLink(false);
+  const shareLink = getShareableLink(false);
   document.getElementById('share-link').value = shareLink;
 
   // Show/hide password controls based on encryption status
@@ -314,7 +312,7 @@ async function main() {
   // Simple copy link button
   document.getElementById('copy-link').onclick = async () => {
     const includePassword = document.getElementById('include-password')?.checked || false;
-    const link = await getShareableLink(includePassword);
+    const link = getShareableLink(includePassword);
     copyToClipboard(link);
 
     if (isEncrypted && !includePassword) {
@@ -329,12 +327,12 @@ async function main() {
   if (inviteBtn) {
     inviteBtn.onclick = async () => {
       const includePassword = document.getElementById('include-password')?.checked || false;
-      const link = await getShareableLink(includePassword);
+      const link = getShareableLink(includePassword);
 
       // Listen for link update requests from the modal
-      const handleLinkUpdate = async (e) => {
+      const handleLinkUpdate = (e) => {
         const { permission, includePassword: includePass } = e.detail;
-        const newLink = await getShareableLink(includePass, permission);
+        const newLink = getShareableLink(includePass, permission);
         window.dispatchEvent(new CustomEvent('invite-link-updated', { detail: { link: newLink } }));
       };
       window.addEventListener('update-invite-link', handleLinkUpdate);
@@ -395,6 +393,7 @@ async function main() {
   // Listen for board changes to update empty state
   window.addEventListener('board-change', (e) => {
     updateEmptyState(e.detail.itemCount === 0);
+    if (role === 'view' && e.detail.itemCount === 0) updateStatus('Waiting for editor');
   });
 
   updateStatus(isEncrypted ? 'Encrypted' : 'Connected');

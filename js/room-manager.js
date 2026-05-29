@@ -1,137 +1,103 @@
 import { generateRoomId } from './utils.js';
-import { generateHmacSignature } from './crypto.js';
-
-// HMAC salt for new signatures
-const HMAC_SALT = 'REDACTED';
-
-// Legacy salt (kept for backwards compatibility)
-const LEGACY_SIGNATURE_SALT = 'REDACTED';
+import {
+  generateSigningKeyPair, exportPublicKey, exportPrivateKey,
+} from './crypto.js';
 
 /**
- * Generate an HMAC-SHA256 signature for the token (new format)
+ * Encode an editor capability link payload (goes after '#').
+ * Carries both private (sk, PKCS8 base64) and public (pk, raw base64) keys.
  */
-async function generateSignature(password, role) {
-  return generateHmacSignature(password + role, HMAC_SALT);
+export function encodeEditorLink(password, privateKeyB64, publicKeyB64, epoch) {
+  const token = { v: 2, p: password, r: 'edit', e: epoch, sk: privateKeyB64, pk: publicKeyB64 };
+  return btoa(encodeURIComponent(JSON.stringify(token)));
 }
 
-/**
- * Verify the HMAC token signature is valid
- */
-async function verifySignature(password, role, signature) {
-  const expected = await generateSignature(password, role);
-  return expected === signature;
-}
-
-/**
- * Generate a legacy btoa-based signature (for backwards compat verification)
- */
-function generateLegacySignature(password, role) {
-  const data = password + role + LEGACY_SIGNATURE_SALT;
-  const encoded = btoa(encodeURIComponent(data));
-  return encoded.substring(0, 8);
-}
-
-/**
- * Verify a legacy btoa-based signature
- */
-function verifyLegacySignature(password, role, signature) {
-  return generateLegacySignature(password, role) === signature;
-}
-
-/**
- * Encode password and role into a URL-safe token with HMAC signature
- * Format: base64(JSON({p: password, r: role, s: hmac_signature}))
- */
-export async function encodeAccessToken(password, role = 'edit') {
-  const signature = await generateSignature(password, role);
-  const token = {
-    p: password,
-    r: role,
-    s: signature
-  };
+/** Encode a viewer capability link payload (public key only). */
+export function encodeViewerLink(password, publicKeyB64, epoch) {
+  const token = { v: 2, p: password, r: 'view', e: epoch, pk: publicKeyB64 };
   return btoa(encodeURIComponent(JSON.stringify(token)));
 }
 
 /**
- * Decode an access token from URL hash
- * Returns { password, role } or null if invalid
- * Supports: HMAC tokens, legacy btoa tokens, and raw password format
+ * Decode a capability token. Returns a normalized capability or null.
+ * Hard break: only v:2 tokens are accepted. An 'edit' token without a private
+ * key is downgraded to 'view' (no key => cannot sign).
+ * @returns {{version:2, password:string, role:'edit'|'view', epoch:number,
+ *            privateKeyB64:string|null, publicKeyB64:string}|null}
  */
-export async function decodeAccessToken(token) {
+export function decodeCapabilityToken(token) {
   try {
-    const decoded = JSON.parse(decodeURIComponent(atob(token)));
-
-    // Verify required fields exist
-    if (!decoded.p || !decoded.r || !decoded.s) {
-      return null;
-    }
-
-    // Try new HMAC signature first
-    if (await verifySignature(decoded.p, decoded.r, decoded.s)) {
-      return {
-        password: decoded.p,
-        role: decoded.r
-      };
-    }
-
-    // Fall back to legacy btoa signature
-    if (verifyLegacySignature(decoded.p, decoded.r, decoded.s)) {
-      return {
-        password: decoded.p,
-        role: decoded.r
-      };
-    }
-
-    console.warn('Invalid token signature - possible tampering');
-    return null;
-  } catch (e) {
-    // Try legacy format (just password in hash)
-    try {
-      const password = decodeURIComponent(token);
-      // If it's a simple string (old format), treat as edit access.
-      // Exclude strings starting with '{' to avoid treating malformed JSON tokens as passwords.
-      if (password && !password.startsWith('{')) {
-        return {
-          password: password,
-          role: 'edit'  // Legacy links get edit access
-        };
-      }
-    } catch (e2) {
-      // Ignore
-    }
+    const d = JSON.parse(decodeURIComponent(atob(token)));
+    if (d.v !== 2 || !d.p || !d.pk || typeof d.e !== 'number') return null;
+    const hasPriv = d.r === 'edit' && typeof d.sk === 'string' && d.sk.length > 0;
+    return {
+      version: 2,
+      password: d.p,
+      role: hasPriv ? 'edit' : 'view',
+      epoch: d.e,
+      privateKeyB64: hasPriv ? d.sk : null,
+      publicKeyB64: d.pk,
+    };
+  } catch {
     return null;
   }
 }
 
 /**
- * Create a new room and navigate to it
- * @param {string|null} password - Optional password for E2E encryption
+ * Mint a brand-new editor capability for a room: random password-independent
+ * Ed25519 keypair at epoch 1.
+ * @param {string} password
+ * @returns {Promise<object>} capability
  */
+export async function mintRoomCapability(password) {
+  const kp = await generateSigningKeyPair();
+  const publicKeyB64 = await exportPublicKey(kp.publicKey);
+  const privateKeyB64 = await exportPrivateKey(kp.privateKey);
+  return { version: 2, password, role: 'edit', epoch: 1, privateKeyB64, publicKeyB64 };
+}
+
+/** @returns {'edit'|'view'} */
+export function capabilityRole(cap) {
+  return cap && cap.role === 'edit' ? 'edit' : 'view';
+}
+
+/** Build the '#' hash payload for a capability (editor form if it has a private key). */
+export function encodeCapabilityHash(cap, role = cap.role) {
+  if (role === 'edit' && cap.privateKeyB64) {
+    return encodeEditorLink(cap.password, cap.privateKeyB64, cap.publicKeyB64, cap.epoch);
+  }
+  return encodeViewerLink(cap.password, cap.publicKeyB64, cap.epoch);
+}
+
+/**
+ * Read the capability from the URL hash. Returns null for unencrypted rooms.
+ */
+export function getCapabilityFromUrl() {
+  const hash = window.location.hash;
+  if (hash && hash.length > 1) {
+    return decodeCapabilityToken(hash.substring(1));
+  }
+  return null;
+}
+
 export async function createRoom(password = null) {
   const roomId = generateRoomId();
-
   if (password) {
-    const token = await encodeAccessToken(password, 'edit');
-    window.location.href = `/room/${roomId}#${token}`;
+    const cap = await mintRoomCapability(password);
+    window.location.href = `/room/${roomId}#${encodeCapabilityHash(cap, 'edit')}`;
   } else {
     window.location.href = `/room/${roomId}`;
   }
 }
 
-/**
- * Join an existing room
- * @param {string} roomId - Room ID to join
- * @param {string|null} password - Optional password for encrypted rooms
- * @param {string} role - Permission level ('edit' or 'view')
- */
 export async function joinRoom(roomId, password = null, role = 'edit') {
   if (!roomId || !roomId.trim()) return;
-
   const cleanRoomId = roomId.trim();
-
   if (password) {
-    const token = await encodeAccessToken(password, role);
-    window.location.href = `/room/${cleanRoomId}#${token}`;
+    // Joining an encrypted room normally requires the shared link. With only a
+    // password (e.g. the join form), mint a fresh editor room rather than fork.
+    const cap = await mintRoomCapability(password);
+    window.location.href = `/room/${cleanRoomId}#${encodeCapabilityHash(cap, 'edit')}`;
   } else {
     window.location.href = `/room/${cleanRoomId}`;
   }
@@ -145,84 +111,30 @@ export function getRoomIdFromUrl() {
   return match ? match[1] : null;
 }
 
-/**
- * Get access info from URL hash
- * Returns { password, role } or { password: null, role: 'edit' } for unencrypted rooms
- */
-export async function getAccessFromUrl() {
-  const hash = window.location.hash;
-  if (hash && hash.length > 1) {
-    const token = hash.substring(1);
-    const decoded = await decodeAccessToken(token);
-    if (decoded) {
-      return decoded;
-    }
-  }
-  return { password: null, role: 'edit' };
+export function getPasswordFromUrl() {
+  const cap = getCapabilityFromUrl();
+  return cap ? cap.password : null;
+}
+
+export function isEncryptedRoom() {
+  return !!getCapabilityFromUrl();
+}
+
+export function isReadOnly() {
+  const cap = getCapabilityFromUrl();
+  // Encrypted rooms: role from capability. Unencrypted rooms: always editable.
+  return cap ? cap.role === 'view' : false;
 }
 
 /**
- * Extract password from URL (for encryption)
+ * Get a shareable link at the requested permission level. Editors can mint
+ * viewer links (they hold pk); viewers can only share viewer links.
  */
-export async function getPasswordFromUrl() {
-  return (await getAccessFromUrl()).password;
-}
-
-/**
- * Get permission level from URL
- */
-export async function getPermissionFromUrl() {
-  return (await getAccessFromUrl()).role;
-}
-
-/**
- * Check if current room is encrypted (has password)
- */
-export async function isEncryptedRoom() {
-  return !!(await getPasswordFromUrl());
-}
-
-/**
- * Check if current user is in read-only mode
- */
-export async function isReadOnly() {
-  return (await getPermissionFromUrl()) === 'view';
-}
-
-/**
- * Get shareable link for current room
- * @param {boolean} includePassword - Whether to include password in link
- * @param {string} permission - Permission level ('edit' or 'view')
- */
-export async function getShareableLink(includePassword = false, permission = 'edit') {
+export function getShareableLink(includePassword = false, permission = 'edit') {
   const baseUrl = window.location.origin + window.location.pathname;
-
-  if (includePassword) {
-    const access = await getAccessFromUrl();
-    if (access.password) {
-      const token = await encodeAccessToken(access.password, permission);
-      return `${baseUrl}#${token}`;
-    }
-  }
-
-  return baseUrl;
-}
-
-/**
- * Update the room password (changes URL hash)
- * @param {string|null} newPassword - New password (null to remove encryption)
- */
-export async function updatePassword(newPassword) {
-  const roomId = getRoomIdFromUrl();
-  if (!roomId) return;
-
-  if (newPassword) {
-    const token = await encodeAccessToken(newPassword, 'edit');
-    window.location.hash = token;
-  } else {
-    // Remove hash without page reload
-    history.replaceState(null, '', window.location.pathname);
-  }
+  const cap = getCapabilityFromUrl();
+  if (!includePassword || !cap) return baseUrl;
+  return `${baseUrl}#${encodeCapabilityHash(cap, permission)}`;
 }
 
 /**

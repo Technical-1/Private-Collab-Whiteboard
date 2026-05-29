@@ -1,8 +1,8 @@
 name: CI
 
-# Fast feedback on every PR and on pushes to main: install deps and run the
-# Vite production build. The build is the gate the PartyKit deploy depends on,
-# so a broken bundle never ships.
+# Fast feedback on every PR and on pushes to main: install deps, run the Vitest
+# suite, and run the Vite production build. These are the gates the PartyKit
+# deploy depends on, so a broken bundle or failing test never ships.
 
 on:
   push:
@@ -21,4 +21,5 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - run: npm test
       - run: npm run build
