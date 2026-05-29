@@ -710,20 +710,24 @@ function setupKeyboardShortcuts() {
       return;
     }
 
-    // Tool shortcuts
-    const toolShortcuts = {
-      'v': 'select',
-      'p': 'freehand',
-      'l': 'line',
-      'r': 'rect',
-      'c': 'circle',
-      't': 'text',
-      'e': 'eraser-shape'
-    };
+    // Tool shortcuts (single key only - skip when a modifier is held so
+    // combos like Cmd+C/Cmd+V aren't swallowed by tool switching, which would
+    // clearSelection() before the copy/paste handlers below run).
+    if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+      const toolShortcuts = {
+        'v': 'select',
+        'p': 'freehand',
+        'l': 'line',
+        'r': 'rect',
+        'c': 'circle',
+        't': 'text',
+        'e': 'eraser-shape'
+      };
 
-    const tool = toolShortcuts[e.key.toLowerCase()];
-    if (tool) {
-      switchTool(tool);
+      const tool = toolShortcuts[e.key.toLowerCase()];
+      if (tool) {
+        switchTool(tool);
+      }
     }
 
     // Help: ? key shows keyboard shortcuts

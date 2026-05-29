@@ -340,7 +340,10 @@ export function showPasswordModal(title, description = '', isChange = false) {
 function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
-  return div.innerHTML;
+  // textContent->innerHTML escapes <, >, & but NOT quotes. Several call sites
+  // interpolate the result inside double-quoted HTML attributes (e.g.
+  // value="..."), so escape quotes too to prevent attribute injection.
+  return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }
 
 /**

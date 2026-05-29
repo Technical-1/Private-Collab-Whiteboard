@@ -282,5 +282,7 @@ function renderCursors(awareness) {
 function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
-  return div.innerHTML;
+  // Escape quotes too (textContent->innerHTML leaves them) so the result is
+  // safe in both element-text and quoted-attribute contexts.
+  return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
 }

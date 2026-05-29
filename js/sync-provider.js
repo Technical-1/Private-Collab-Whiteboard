@@ -99,8 +99,15 @@ export class SyncProvider {
     this.wsconnecting = true;
     this._onStatus({ status: 'connecting' });
 
-    // Build WebSocket URL
-    const protocol = this.serverUrl.startsWith('localhost') ? 'ws' : 'wss';
+    // Build WebSocket URL. Use insecure ws:// only for local dev hosts;
+    // everything else (real domains) must use wss://.
+    const host = this.serverUrl.split(':')[0];
+    const isLocal =
+      host === 'localhost' ||
+      host === '127.0.0.1' ||
+      host === '0.0.0.0' ||
+      !host.includes('.');
+    const protocol = isLocal ? 'ws' : 'wss';
     const wsUrl = `${protocol}://${this.serverUrl}/party/${this.roomId}`;
 
     this.ws = new WebSocket(wsUrl);
@@ -232,6 +239,14 @@ export class SyncProvider {
     this.wsconnected = false;
     this.wsconnecting = false;
     this._synced = false;
+
+    // Stop the resync timer started in _onOpen. Without this, every reconnect
+    // stacks another setInterval (the old one is never cleared) which leaks
+    // timers and floods the channel with redundant sync-step-1 messages.
+    if (this._resyncInterval) {
+      clearInterval(this._resyncInterval);
+      this._resyncInterval = null;
+    }
 
     this._onStatus({ status: 'disconnected' });
 
