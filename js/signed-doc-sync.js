@@ -38,6 +38,8 @@ export class SignedDocSync {
     this._pending = Promise.resolve(); // serializes async sign/verify work (test hook)
     this._latestSnapshot = null; // { payload: Uint8Array } cached editor-signed SNAPSHOT
     this._snapshotTimer = null;
+    this._bootstrapTimer = null;
+    this._applied = false; // set once any remote state has been applied
 
     transport.onMessage = (type, payload) => this._receive(type, payload);
     // Re-ask the room for state whenever the socket (re)connects. start()'s
@@ -67,6 +69,18 @@ export class SignedDocSync {
       if (saved) await this._applySnapshot(saved);
     }
     this._requestSnapshot();
+    // A single request can race a just-connecting peer (the responder may not
+    // have us in the room yet), leaving a fresh joiner to an idle room empty.
+    // Retry a few times until we've applied some state. Snapshots are idempotent.
+    let tries = 0;
+    this._bootstrapTimer = setInterval(() => {
+      if (this._applied || ++tries >= 5) {
+        clearInterval(this._bootstrapTimer);
+        this._bootstrapTimer = null;
+        return;
+      }
+      this._requestSnapshot();
+    }, 1500);
   }
 
   /** Ask peers for the current signed state (bootstrap). */
@@ -91,6 +105,7 @@ export class SignedDocSync {
       if (!ok) return;                                          // bad sig -> drop
     }
     Y.applyUpdate(this.doc, env.update, REMOTE_ORIGIN);
+    this._applied = true;
   }
 
   _scheduleSnapshot() {
@@ -125,6 +140,7 @@ export class SignedDocSync {
     this._latestSnapshot = { payload };
     if (this.store) this._enqueue(() => this.store.save(payload));
     Y.applyUpdate(this.doc, env.update, REMOTE_ORIGIN);
+    this._applied = true;
   }
 
   async _answerSnapshotRequest() {
@@ -135,6 +151,7 @@ export class SignedDocSync {
 
   destroy() {
     if (this._snapshotTimer) { clearTimeout(this._snapshotTimer); this._snapshotTimer = null; }
+    if (this._bootstrapTimer) { clearInterval(this._bootstrapTimer); this._bootstrapTimer = null; }
     this.doc.off('update', this._updateHandler);
   }
 
