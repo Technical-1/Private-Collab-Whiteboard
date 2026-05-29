@@ -296,7 +296,7 @@
   <script type="module">
     import { generateRoomId } from './js/utils.js';
     import { saveBoard, getBoardCount, hasSavedBoards } from './js/board-history.js';
-    import { encodeAccessToken } from './js/room-manager.js';
+    import { mintRoomCapability, encodeCapabilityHash } from './js/room-manager.js';
 
     // Show My Boards link if user has saved boards
     if (hasSavedBoards()) {
@@ -320,8 +320,8 @@
       });
 
       if (password) {
-        const token = await encodeAccessToken(password, 'edit');
-        window.location.href = `/room/${roomId}#${token}`;
+        const cap = await mintRoomCapability(password);
+        window.location.href = `/room/${roomId}#${encodeCapabilityHash(cap, 'edit')}`;
       } else {
         window.location.href = `/room/${roomId}`;
       }
@@ -369,8 +369,8 @@
       });
 
       if (password) {
-        const token = await encodeAccessToken(password, 'edit');
-        window.location.href = `/room/${roomCode}#${token}`;
+        const cap = await mintRoomCapability(password);
+        window.location.href = `/room/${roomCode}#${encodeCapabilityHash(cap, 'edit')}`;
       } else {
         window.location.href = `/room/${roomCode}`;
       }
