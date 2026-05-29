@@ -3,6 +3,7 @@ import { IndexeddbPersistence } from 'y-indexeddb';
 import { SyncProvider } from './sync-provider.js';
 import { deriveKey, encrypt, decrypt } from './crypto.js';
 import { PARTYKIT_HOST } from './config.js';
+import { encodeAccessToken } from './room-manager.js';
 
 /**
  * Wait for a provider to emit a sync event
@@ -98,6 +99,14 @@ export async function initializeYjs(roomId, password = null) {
   // This is the first priority - local data should always be available
   await waitForSync(indexeddbProvider, 'synced', 5000);
 
+  // If this is an encrypted room whose encrypted store is still empty, migrate
+  // any pre-encryption drawings from the unencrypted store. Enabling encryption
+  // on an existing room switches IndexedDB keys, which would otherwise orphan
+  // all prior content in a separate database.
+  if (password && boards.size === 0) {
+    await migrateUnencryptedData(roomId, ydoc);
+  }
+
   // Wait for network sync with a reasonable timeout
   // If we're the first client or offline, this will timeout and that's OK
   // The timeout prevents blocking forever when no other peers exist
@@ -167,6 +176,35 @@ export async function initializeYjs(roomId, password = null) {
 }
 
 /**
+ * One-time migration: copy drawings from the unencrypted IndexedDB store into
+ * the (currently empty) encrypted doc. Runs only on the first encrypted load of
+ * a room that previously held unencrypted data. CRDT-merges the legacy state so
+ * the encrypted store's own persistence picks it up; the legacy store is left
+ * intact as a backup.
+ *
+ * @param {string} roomId - Room identifier
+ * @param {Y.Doc} ydoc - The encrypted room's Y.js document
+ */
+async function migrateUnencryptedData(roomId, ydoc) {
+  const legacyKey = `whiteboard-${roomId}`;
+  const tempDoc = new Y.Doc();
+  const tempProvider = new IndexeddbPersistence(legacyKey, tempDoc);
+
+  try {
+    await waitForSync(tempProvider, 'synced', 5000);
+    const legacyBoards = tempDoc.getMap('boards');
+    if (legacyBoards.size > 0) {
+      Y.applyUpdate(ydoc, Y.encodeStateAsUpdate(tempDoc));
+    }
+  } catch (e) {
+    console.warn('Encryption data migration failed:', e);
+  } finally {
+    tempProvider.destroy();
+    tempDoc.destroy();
+  }
+}
+
+/**
  * Dispatch connection status event
  */
 function dispatchConnectionStatus(connected, synced, decryptionFailed) {
@@ -177,11 +215,14 @@ function dispatchConnectionStatus(connected, synced, decryptionFailed) {
 
 /**
  * Change room password (requires page reload)
+ * Encodes the new password as a signed access token (matching the rest of the
+ * app) rather than a raw hash, so the link keeps a consistent format and role.
  */
-export function changePassword(roomId, newPassword) {
+export async function changePassword(roomId, newPassword) {
   const baseUrl = `${window.location.origin}/room/${roomId}`;
   if (newPassword) {
-    window.location.href = `${baseUrl}#${encodeURIComponent(newPassword)}`;
+    const token = await encodeAccessToken(newPassword, 'edit');
+    window.location.href = `${baseUrl}#${token}`;
   } else {
     window.location.href = baseUrl;
   }
