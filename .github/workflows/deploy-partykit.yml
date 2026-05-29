@@ -1,0 +1,34 @@
+name: Deploy PartyKit
+
+# The frontend deploys to Vercel automatically on push to main. The PartyKit
+# server deploys separately — this workflow keeps the two in lockstep by
+# deploying the server on the same pushes, gated behind the build so a broken
+# server never ships.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      # Only the server and the code it bundles affect the deploy.
+      - 'party/**'
+      - 'partykit.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/deploy-partykit.yml'
+  workflow_dispatch: {} # allow manual redeploys from the Actions tab
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npx partykit deploy
+        env:
+          PARTYKIT_TOKEN: ${{ secrets.PARTYKIT_TOKEN }}
+          PARTYKIT_LOGIN: ${{ secrets.PARTYKIT_LOGIN }}
