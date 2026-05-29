@@ -14,14 +14,16 @@ export class SignedDocSync {
    * @param {{role:'edit'|'view', epoch:number}} capability
    * @param {CryptoKey|null} privateKey - editor signing key (null for viewers)
    * @param {CryptoKey} publicKey - room verify key (from the link)
+   * @param {{load():Promise<Uint8Array|null>, save(bytes:Uint8Array):Promise<void>}|null} store - optional persistence store
    */
-  constructor(doc, transport, capability, privateKey, publicKey) {
+  constructor(doc, transport, capability, privateKey, publicKey, store = null) {
     this.doc = doc;
     this.transport = transport;
     this.epoch = capability.epoch;
     this.isEditor = capability.role === 'edit' && !!privateKey;
     this.privateKey = privateKey;
     this.publicKey = publicKey;
+    this.store = store;
     this._pending = Promise.resolve(); // serializes async sign/verify work (test hook)
     this._latestSnapshot = null; // { payload: Uint8Array } cached editor-signed SNAPSHOT
     this._snapshotTimer = null;
@@ -42,7 +44,11 @@ export class SignedDocSync {
   }
 
   async start() {
-    // Ask the room for current state. Editors will also have their own local doc.
+    // Load any persisted snapshot first, then ask the room for current state.
+    if (this.store) {
+      const saved = await this.store.load();
+      if (saved) await this._applySnapshot(saved);
+    }
     this.transport.send(MSG.SNAPSHOT_REQUEST, new Uint8Array(0));
   }
 
@@ -79,6 +85,7 @@ export class SignedDocSync {
     const sig = await signUpdate(this.privateKey, state, this.epoch);
     const payload = encodeEnvelope(state, this.epoch, sig);
     this._latestSnapshot = { payload };
+    if (this.store) this._enqueue(() => this.store.save(payload));
     this.transport.send(MSG.SNAPSHOT, payload);
   }
 
@@ -90,6 +97,7 @@ export class SignedDocSync {
     if (!ok) return;
     // Cache verified snapshot so we can relay it later (even viewers).
     this._latestSnapshot = { payload };
+    if (this.store) this._enqueue(() => this.store.save(payload));
     Y.applyUpdate(this.doc, env.update, REMOTE_ORIGIN);
   }
 
