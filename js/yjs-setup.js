@@ -84,15 +84,26 @@ export async function initializeYjs(roomId, capability = null) {
 
   await waitForSync(indexeddbProvider, 'synced', 5000);
 
-  // Signing layer (only for capability/encrypted rooms).
-  let signedSync = null;
+  // Doc sync layer. Capability rooms run SIGNED (view-only enforced); password-
+  // less rooms run OPEN/unsigned (everyone can edit), matching the app's original
+  // password-free room behavior.
+  let signedSync;
   if (capability) {
+    // First encrypted load: migrate any pre-encryption drawings from the
+    // unencrypted store so enabling encryption doesn't orphan them.
+    if (boards.size === 0) {
+      await migrateUnencryptedData(roomId, ydoc);
+    }
     const publicKey = await importPublicKey(capability.publicKeyB64);
     const privateKey = capability.privateKeyB64 ? await importPrivateKey(capability.privateKeyB64) : null;
     const store = makeSnapshotStore(roomId, capability.epoch);
     signedSync = new SignedDocSync(ydoc, provider, capability, privateKey, publicKey, store);
-    await signedSync.start();
+  } else {
+    // Open (passwordless) room: unsigned open collaboration, no view-only.
+    const store = makeSnapshotStore(roomId, 0);
+    signedSync = new SignedDocSync(ydoc, provider, { role: 'edit', epoch: 0 }, null, null, store);
   }
+  await signedSync.start();
 
   if (!boards.has('default')) boards.set('default', new Y.Array());
 
@@ -106,6 +117,32 @@ export async function initializeYjs(roomId, capability = null) {
       provider.destroy(); indexeddbProvider.destroy(); ydoc.destroy();
     },
   };
+}
+
+/**
+ * One-time migration: copy drawings from the unencrypted IndexedDB store into
+ * the (currently empty) encrypted doc, so enabling encryption on an existing
+ * room doesn't orphan prior content. CRDT-merges the legacy state; the editor
+ * then signs it into snapshots. The legacy store is left intact as a backup.
+ * @param {string} roomId
+ * @param {Y.Doc} ydoc - the encrypted room's document
+ */
+async function migrateUnencryptedData(roomId, ydoc) {
+  const legacyKey = `whiteboard-${roomId}`;
+  const tempDoc = new Y.Doc();
+  const tempProvider = new IndexeddbPersistence(legacyKey, tempDoc);
+  try {
+    await waitForSync(tempProvider, 'synced', 5000);
+    const legacyBoards = tempDoc.getMap('boards');
+    if (legacyBoards.size > 0) {
+      Y.applyUpdate(ydoc, Y.encodeStateAsUpdate(tempDoc));
+    }
+  } catch (e) {
+    console.warn('Encryption data migration failed:', e);
+  } finally {
+    tempProvider.destroy();
+    tempDoc.destroy();
+  }
 }
 
 /**

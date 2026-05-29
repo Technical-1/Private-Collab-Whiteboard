@@ -2,25 +2,36 @@ import * as Y from 'yjs';
 import { MSG, encodeEnvelope, decodeEnvelope, signUpdate, verifyUpdate } from './protocol.js';
 
 const REMOTE_ORIGIN = Symbol('signed-doc-sync-remote');
+const EMPTY_SIG = new Uint8Array(0); // placeholder signature for open (unsigned) rooms
 
 /**
- * Binds a Y.Doc to a transport with editor-signed updates.
- * Only editor-signed, current-epoch updates are ever applied.
+ * Binds a Y.Doc to a transport.
+ *
+ * Two modes:
+ * - Signed (capability room): a room verify key is provided. Only editor-signed,
+ *   current-epoch updates/snapshots are ever applied; viewers cannot author.
+ * - Open (passwordless room): no public key. Updates are exchanged UNSIGNED and
+ *   applied without verification — open collaboration, everyone is an editor.
+ *   There is no view-only enforcement and no confidentiality in this mode, which
+ *   matches the app's original password-free room behavior.
  */
 export class SignedDocSync {
   /**
    * @param {Y.Doc} doc
    * @param {{send:(type:number,payload:Uint8Array)=>void, onMessage:Function|null}} transport
    * @param {{role:'edit'|'view', epoch:number}} capability
-   * @param {CryptoKey|null} privateKey - editor signing key (null for viewers)
-   * @param {CryptoKey} publicKey - room verify key (from the link)
+   * @param {CryptoKey|null} privateKey - editor signing key (null for viewers/open rooms)
+   * @param {CryptoKey|null} publicKey - room verify key; null => open (unsigned) room
    * @param {{load():Promise<Uint8Array|null>, save(bytes:Uint8Array):Promise<void>}|null} store - optional persistence store
    */
   constructor(doc, transport, capability, privateKey, publicKey, store = null) {
     this.doc = doc;
     this.transport = transport;
     this.epoch = capability.epoch;
-    this.isEditor = capability.role === 'edit' && !!privateKey;
+    // Signed mode iff we have a verify key. Open rooms run unsigned.
+    this.signed = !!publicKey;
+    // In open rooms everyone can author; in signed rooms only the key holder.
+    this.isEditor = !this.signed || (capability.role === 'edit' && !!privateKey);
     this.privateKey = privateKey;
     this.publicKey = publicKey;
     this.store = store;
@@ -39,7 +50,9 @@ export class SignedDocSync {
       if (origin === REMOTE_ORIGIN) return;
       if (!this.isEditor) return; // viewers never broadcast doc updates
       this._enqueue(async () => {
-        const sig = await signUpdate(this.privateKey, update, this.epoch);
+        const sig = this.signed
+          ? await signUpdate(this.privateKey, update, this.epoch)
+          : EMPTY_SIG;
         this.transport.send(MSG.UPDATE, encodeEnvelope(update, this.epoch, sig));
       });
       this._scheduleSnapshot();
@@ -73,8 +86,10 @@ export class SignedDocSync {
     let env;
     try { env = decodeEnvelope(payload); } catch { return; }
     if (env.epoch !== this.epoch) return;                       // wrong epoch -> drop
-    const ok = await verifyUpdate(this.publicKey, env.update, env.epoch, env.sig);
-    if (!ok) return;                                            // bad sig -> drop
+    if (this.signed) {
+      const ok = await verifyUpdate(this.publicKey, env.update, env.epoch, env.sig);
+      if (!ok) return;                                          // bad sig -> drop
+    }
     Y.applyUpdate(this.doc, env.update, REMOTE_ORIGIN);
   }
 
@@ -91,7 +106,7 @@ export class SignedDocSync {
   async emitSnapshot() {
     if (!this.isEditor) return;
     const state = Y.encodeStateAsUpdate(this.doc);
-    const sig = await signUpdate(this.privateKey, state, this.epoch);
+    const sig = this.signed ? await signUpdate(this.privateKey, state, this.epoch) : EMPTY_SIG;
     const payload = encodeEnvelope(state, this.epoch, sig);
     this._latestSnapshot = { payload };
     if (this.store) this._enqueue(() => this.store.save(payload));
@@ -102,8 +117,10 @@ export class SignedDocSync {
     let env;
     try { env = decodeEnvelope(payload); } catch { return; }
     if (env.epoch !== this.epoch) return;
-    const ok = await verifyUpdate(this.publicKey, env.update, env.epoch, env.sig);
-    if (!ok) return;
+    if (this.signed) {
+      const ok = await verifyUpdate(this.publicKey, env.update, env.epoch, env.sig);
+      if (!ok) return;
+    }
     // Cache verified snapshot so we can relay it later (even viewers).
     this._latestSnapshot = { payload };
     if (this.store) this._enqueue(() => this.store.save(payload));

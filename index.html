@@ -162,14 +162,11 @@
         </svg>
       </button>
       <h2>Join a Room</h2>
-      <p>Enter the room code shared with you</p>
+      <p>Enter a room code, or paste the full invite link shared with you</p>
       <div class="form-group">
-        <label for="room-code">Room Code</label>
-        <input type="text" id="room-code" placeholder="e.g. a1b2c3d4e5f6">
-      </div>
-      <div class="form-group">
-        <label for="join-password">Password <span class="optional">(if required)</span></label>
-        <input type="password" id="join-password" placeholder="Enter room password">
+        <label for="room-code">Room code or invite link</label>
+        <input type="text" id="room-code" placeholder="a1b2c3d4e5f6  or  https://…/room/…#…">
+        <span class="optional">Password-protected rooms can only be joined via their invite link.</span>
       </div>
       <button id="join-room" class="btn btn-primary btn-full">
         Join Room
@@ -351,29 +348,37 @@
     });
 
     // Join room handler
-    document.getElementById('join-room').addEventListener('click', async () => {
-      const roomCode = document.getElementById('room-code').value.trim();
-      const password = document.getElementById('join-password').value;
-
-      if (!roomCode) {
+    document.getElementById('join-room').addEventListener('click', () => {
+      const raw = document.getElementById('room-code').value.trim();
+      if (!raw) {
         document.getElementById('room-code').focus();
         return;
       }
 
-      // Save to board history as collaborator (will be upgraded to viewer if read-only)
+      // Accept either a bare room code (open room) or a full invite link, which
+      // carries the capability in the URL hash. Encrypted rooms can ONLY be
+      // joined via the link — the signing key is not derivable from a password.
+      let target;
+      if (raw.includes('/room/')) {
+        try {
+          const u = raw.startsWith('http') ? new URL(raw) : new URL(raw, window.location.origin);
+          target = u.pathname + u.hash;
+        } catch {
+          target = `/room/${encodeURIComponent(raw)}`;
+        }
+      } else {
+        target = `/room/${encodeURIComponent(raw)}`;
+      }
+
+      const roomId = target.replace(/^\/room\//, '').split('#')[0];
       saveBoard({
-        roomId: roomCode,
-        roomName: roomCode,
+        roomId,
+        roomName: roomId,
         role: 'collaborator',
-        isEncrypted: !!password
+        isEncrypted: target.includes('#'),
       });
 
-      if (password) {
-        const cap = await mintRoomCapability(password);
-        window.location.href = `/room/${roomCode}#${encodeCapabilityHash(cap, 'edit')}`;
-      } else {
-        window.location.href = `/room/${roomCode}`;
-      }
+      window.location.href = target;
     });
 
     document.getElementById('room-code').addEventListener('keypress', (e) => {

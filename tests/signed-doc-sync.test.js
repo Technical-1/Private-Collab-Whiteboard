@@ -147,6 +147,29 @@ describe('SignedDocSync snapshot bootstrap', () => {
   });
 });
 
+describe('open (passwordless, unsigned) rooms', () => {
+  it('two keyless peers sync updates both directions without signatures', async () => {
+    const relay = makeRelay();
+    const docA = new Y.Doc(), docB = new Y.Doc();
+    const open = { role: 'edit', epoch: 0 };
+    const a = new SignedDocSync(docA, relay.transportFor('A'), open, null, null);
+    const b = new SignedDocSync(docB, relay.transportFor('B'), open, null, null);
+    a.self = 'A'; b.self = 'B';
+    relay.attach({ self: 'A', onMessage: (t, p) => a._receive(t, p) });
+    relay.attach({ self: 'B', onMessage: (t, p) => b._receive(t, p) });
+    await a.start(); await b.start();
+
+    docA.getMap('boards').set('x', 7);
+    await a._flush(); await b._drain();
+    expect(docB.getMap('boards').get('x')).toBe(7);
+
+    // In an open room everyone is an editor, so B can write back to A.
+    docB.getMap('boards').set('y', 8);
+    await b._flush(); await a._drain();
+    expect(docA.getMap('boards').get('y')).toBe(8);
+  });
+});
+
 describe('connect bootstrap', () => {
   it('re-sends SNAPSHOT_REQUEST when the transport (re)connects', async () => {
     const cap = await editorCap();
