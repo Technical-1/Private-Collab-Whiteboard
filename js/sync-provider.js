@@ -1,27 +1,28 @@
 /**
- * Unified Y.js sync provider for PartyKit
+ * Typed transport layer for the collaborative whiteboard.
  *
- * Works with a simple broadcast server and supports optional encryption.
- * Uses the y-protocols sync protocol which handles all sync logic client-side.
+ * Owns: WebSocket lifecycle (connect/disconnect/destroy), reconnect/backoff,
+ *       AES encrypt/decrypt, and AWARENESS handling (unsigned, ephemeral).
+ *
+ * Does NOT own: Y.js document sync (y-protocols). A separate signing/sync
+ *               layer calls `send(type, payload)` and receives decoded payloads
+ *               via the `onMessage` callback.
  */
 
-import * as Y from 'yjs';
-import * as syncProtocol from 'y-protocols/sync';
 import * as awarenessProtocol from 'y-protocols/awareness';
 import * as encoding from 'lib0/encoding';
 import * as decoding from 'lib0/decoding';
-
-const MESSAGE_SYNC = 0;
-const MESSAGE_AWARENESS = 1;
+import { MSG } from './protocol.js';
 
 export class SyncProvider {
   /**
    * @param {string} serverUrl - PartyKit server URL
    * @param {string} roomId - Room identifier
-   * @param {Y.Doc} ydoc - Y.js document
+   * @param {import('yjs').Doc} ydoc - Y.js document (used only for awareness)
    * @param {Object} options - Configuration options
    * @param {CryptoKey|null} options.encryptionKey - Optional AES-GCM key for E2E encryption
    * @param {Function} options.onStatus - Status callback
+   * @param {Function} options.onMessage - Called with (type:number, payload:Uint8Array) for non-awareness messages
    * @param {Function} options.encrypt - Encryption function (if encryptionKey provided)
    * @param {Function} options.decrypt - Decryption function (if encryptionKey provided)
    */
@@ -40,24 +41,14 @@ export class SyncProvider {
     this.wsUnsuccessfulReconnects = 0;
     this.maxBackoffTime = 2500;
 
-    this._synced = false;
-    this._resyncInterval = null;
-
     // Callbacks
     this._onStatus = options.onStatus || (() => {});
+    this._onTypedMessage = options.onMessage || (() => {});
 
     // Bind methods
     this._onMessage = this._onMessage.bind(this);
     this._onClose = this._onClose.bind(this);
     this._onOpen = this._onOpen.bind(this);
-
-    // Y.js update handler - broadcast to other clients
-    this._updateHandler = (update, origin) => {
-      if (origin !== this) {
-        this._broadcastUpdate(update);
-      }
-    };
-    ydoc.on('update', this._updateHandler);
 
     // Awareness change handler
     this._awarenessUpdateHandler = ({ added, updated, removed }, origin) => {
@@ -83,10 +74,6 @@ export class SyncProvider {
     if (typeof window !== 'undefined') {
       window.addEventListener('beforeunload', this._beforeUnloadHandler);
     }
-  }
-
-  get synced() {
-    return this._synced;
   }
 
   get isEncrypted() {
@@ -129,15 +116,10 @@ export class SyncProvider {
   destroy() {
     this.disconnect();
 
-    if (this._resyncInterval) {
-      clearInterval(this._resyncInterval);
-    }
-
     if (typeof window !== 'undefined' && this._beforeUnloadHandler) {
       window.removeEventListener('beforeunload', this._beforeUnloadHandler);
     }
 
-    this.doc.off('update', this._updateHandler);
     this.awareness.off('update', this._awarenessUpdateHandler);
     awarenessProtocol.removeAwarenessStates(
       this.awareness,
@@ -153,72 +135,35 @@ export class SyncProvider {
 
     this._onStatus({ status: 'connected' });
 
-    // Send sync step 1 (our state vector)
-    await this._sendSyncStep1();
-
     // Send our current awareness state
     this._broadcastAwareness([this.doc.clientID]);
-
-    // Periodic resync to ensure consistency
-    this._resyncInterval = setInterval(() => {
-      if (this.wsconnected) {
-        this._sendSyncStep1();
-      }
-    }, 30000);
   }
 
   async _onMessage(event) {
     try {
-      let data = new Uint8Array(event.data);
-      if (data.length < 2) return;
-
-      const messageType = data[0];
+      const data = new Uint8Array(event.data);
+      if (data.length < 1) return;
+      const type = data[0];
       let payload = data.slice(1);
 
-      // Decrypt if encrypted mode
+      if (type === MSG.AWARENESS) {
+        // Awareness is never encrypted/signed (ephemeral, cosmetic).
+        this._handleAwarenessMessage(payload);
+        return;
+      }
+
+      // All other types carry an AES-encrypted signed envelope.
       if (this.isEncrypted && this.decrypt) {
         try {
           payload = await this.decrypt(payload, this.encryptionKey);
         } catch (err) {
-          console.error('Decryption failed:', err);
           this._onStatus({ status: 'decryption-failed' });
           return;
         }
       }
-
-      if (messageType === MESSAGE_SYNC) {
-        await this._handleSyncMessage(payload);
-      } else if (messageType === MESSAGE_AWARENESS) {
-        this._handleAwarenessMessage(payload);
-      }
+      this._onTypedMessage(type, payload);
     } catch (error) {
       console.error('Failed to process message:', error);
-    }
-  }
-
-  async _handleSyncMessage(payload) {
-    const decoder = decoding.createDecoder(payload);
-    const encoder = encoding.createEncoder();
-
-    const syncMessageType = syncProtocol.readSyncMessage(
-      decoder,
-      encoder,
-      this.doc,
-      this
-    );
-
-    // If there's a response to send (sync step 2), send it
-    if (encoding.length(encoder) > 0) {
-      await this._sendMessage(MESSAGE_SYNC, encoding.toUint8Array(encoder));
-    }
-
-    // Mark as synced after receiving sync step 2 or update
-    if (syncMessageType === syncProtocol.messageYjsSyncStep2 ||
-        syncMessageType === syncProtocol.messageYjsUpdate) {
-      if (!this._synced) {
-        this._synced = true;
-        this._onStatus({ status: 'synced' });
-      }
     }
   }
 
@@ -238,15 +183,6 @@ export class SyncProvider {
   _onClose() {
     this.wsconnected = false;
     this.wsconnecting = false;
-    this._synced = false;
-
-    // Stop the resync timer started in _onOpen. Without this, every reconnect
-    // stacks another setInterval (the old one is never cleared) which leaks
-    // timers and floods the channel with redundant sync-step-1 messages.
-    if (this._resyncInterval) {
-      clearInterval(this._resyncInterval);
-      this._resyncInterval = null;
-    }
 
     this._onStatus({ status: 'disconnected' });
 
@@ -260,20 +196,6 @@ export class SyncProvider {
     setTimeout(() => this.connect(), backoff);
   }
 
-  async _sendSyncStep1() {
-    const encoder = encoding.createEncoder();
-    syncProtocol.writeSyncStep1(encoder, this.doc);
-    await this._sendMessage(MESSAGE_SYNC, encoding.toUint8Array(encoder));
-  }
-
-  async _broadcastUpdate(update) {
-    if (!this.wsconnected) return;
-
-    const encoder = encoding.createEncoder();
-    syncProtocol.writeUpdate(encoder, update);
-    await this._sendMessage(MESSAGE_SYNC, encoding.toUint8Array(encoder));
-  }
-
   async _broadcastAwareness(changedClients) {
     if (!this.wsconnected) return;
 
@@ -282,25 +204,25 @@ export class SyncProvider {
       encoder,
       awarenessProtocol.encodeAwarenessUpdate(this.awareness, changedClients)
     );
-    await this._sendMessage(MESSAGE_AWARENESS, encoding.toUint8Array(encoder));
+    await this.send(MSG.AWARENESS, encoding.toUint8Array(encoder));
   }
 
-  async _sendMessage(type, payload) {
+  /**
+   * Send a typed message. Awareness messages are sent unencrypted; all other
+   * types are AES-encrypted when an encryptionKey is configured.
+   * @param {number} type - Message type (use MSG constants from protocol.js)
+   * @param {Uint8Array} payload
+   */
+  async send(type, payload) {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
-
     try {
       let finalPayload = payload;
-
-      // Encrypt if in encrypted mode
-      if (this.isEncrypted && this.encrypt) {
+      if (type !== MSG.AWARENESS && this.isEncrypted && this.encrypt) {
         finalPayload = await this.encrypt(payload, this.encryptionKey);
       }
-
-      // Prepend message type
       const message = new Uint8Array(1 + finalPayload.length);
       message[0] = type;
       message.set(finalPayload, 1);
-
       this.ws.send(message);
     } catch (error) {
       console.error('Failed to send message:', error);
