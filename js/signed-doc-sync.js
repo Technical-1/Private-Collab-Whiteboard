@@ -29,6 +29,10 @@ export class SignedDocSync {
     this._snapshotTimer = null;
 
     transport.onMessage = (type, payload) => this._receive(type, payload);
+    // Re-ask the room for state whenever the socket (re)connects. start()'s
+    // initial request is usually dropped because the WS isn't OPEN yet, so this
+    // hook is what actually bootstraps a fresh joiner.
+    transport.onConnect = () => this._requestSnapshot();
 
     // Broadcast local editor edits (origin !== REMOTE_ORIGIN means it's ours).
     this._updateHandler = (update, origin) => {
@@ -49,6 +53,11 @@ export class SignedDocSync {
       const saved = await this.store.load();
       if (saved) await this._applySnapshot(saved);
     }
+    this._requestSnapshot();
+  }
+
+  /** Ask peers for the current signed state (bootstrap). */
+  _requestSnapshot() {
     this.transport.send(MSG.SNAPSHOT_REQUEST, new Uint8Array(0));
   }
 

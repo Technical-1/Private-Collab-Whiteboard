@@ -44,6 +44,9 @@ export class SyncProvider {
     // Callbacks
     this._onStatus = options.onStatus || (() => {});
     this._onTypedMessage = options.onMessage || (() => {});
+    // Set by the signing layer; invoked on every (re)connect so it can re-ask
+    // the room for state once the socket is actually OPEN.
+    this.onConnect = options.onConnect || null;
 
     // Bind methods
     this._onMessage = this._onMessage.bind(this);
@@ -137,6 +140,9 @@ export class SyncProvider {
 
     // Send our current awareness state
     this._broadcastAwareness([this.doc.clientID]);
+
+    // Let the signing layer (re)bootstrap now that the socket is OPEN.
+    if (this.onConnect) this.onConnect();
   }
 
   async _onMessage(event) {

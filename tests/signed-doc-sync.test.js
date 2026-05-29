@@ -147,6 +147,23 @@ describe('SignedDocSync snapshot bootstrap', () => {
   });
 });
 
+describe('connect bootstrap', () => {
+  it('re-sends SNAPSHOT_REQUEST when the transport (re)connects', async () => {
+    const cap = await editorCap();
+    const sent = [];
+    const transport = { send: (t) => sent.push(t), onMessage: null, onConnect: null };
+    const sync = new SignedDocSync(
+      new Y.Doc(), transport, viewerCapFrom(cap), null, await importPublicKey(cap.publicKeyB64),
+    );
+    await sync.start();
+    const before = sent.filter((t) => t === MSG.SNAPSHOT_REQUEST).length;
+
+    transport.onConnect(); // simulate the socket opening
+    const after = sent.filter((t) => t === MSG.SNAPSHOT_REQUEST).length;
+    expect(after).toBe(before + 1);
+  });
+});
+
 describe('epoch lockout', () => {
   it('rejects an update signed at a different epoch (rotation lockout)', async () => {
     const cap = await editorCap();              // epoch 1
