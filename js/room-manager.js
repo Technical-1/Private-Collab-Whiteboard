@@ -1,4 +1,7 @@
 import { generateRoomId } from './utils.js';
+import {
+  generateSigningKeyPair, exportPublicKey, exportPrivateKey,
+} from './crypto.js';
 
 /**
  * Encode an editor capability link payload (goes after '#').
@@ -41,34 +44,60 @@ export function decodeCapabilityToken(token) {
 }
 
 /**
- * Create a new room and navigate to it
- * @param {string|null} password - Optional password for E2E encryption
+ * Mint a brand-new editor capability for a room: random password-independent
+ * Ed25519 keypair at epoch 1.
+ * @param {string} password
+ * @returns {Promise<object>} capability
  */
+export async function mintRoomCapability(password) {
+  const kp = await generateSigningKeyPair();
+  const publicKeyB64 = await exportPublicKey(kp.publicKey);
+  const privateKeyB64 = await exportPrivateKey(kp.privateKey);
+  return { version: 2, password, role: 'edit', epoch: 1, privateKeyB64, publicKeyB64 };
+}
+
+/** @returns {'edit'|'view'} */
+export function capabilityRole(cap) {
+  return cap && cap.role === 'edit' ? 'edit' : 'view';
+}
+
+/** Build the '#' hash payload for a capability (editor form if it has a private key). */
+export function encodeCapabilityHash(cap, role = cap.role) {
+  if (role === 'edit' && cap.privateKeyB64) {
+    return encodeEditorLink(cap.password, cap.privateKeyB64, cap.publicKeyB64, cap.epoch);
+  }
+  return encodeViewerLink(cap.password, cap.publicKeyB64, cap.epoch);
+}
+
+/**
+ * Read the capability from the URL hash. Returns null for unencrypted rooms.
+ */
+export function getCapabilityFromUrl() {
+  const hash = window.location.hash;
+  if (hash && hash.length > 1) {
+    return decodeCapabilityToken(hash.substring(1));
+  }
+  return null;
+}
+
 export async function createRoom(password = null) {
   const roomId = generateRoomId();
-
   if (password) {
-    const token = await encodeAccessToken(password, 'edit');
-    window.location.href = `/room/${roomId}#${token}`;
+    const cap = await mintRoomCapability(password);
+    window.location.href = `/room/${roomId}#${encodeCapabilityHash(cap, 'edit')}`;
   } else {
     window.location.href = `/room/${roomId}`;
   }
 }
 
-/**
- * Join an existing room
- * @param {string} roomId - Room ID to join
- * @param {string|null} password - Optional password for encrypted rooms
- * @param {string} role - Permission level ('edit' or 'view')
- */
 export async function joinRoom(roomId, password = null, role = 'edit') {
   if (!roomId || !roomId.trim()) return;
-
   const cleanRoomId = roomId.trim();
-
   if (password) {
-    const token = await encodeAccessToken(password, role);
-    window.location.href = `/room/${cleanRoomId}#${token}`;
+    // Joining an encrypted room normally requires the shared link. With only a
+    // password (e.g. the join form), mint a fresh editor room rather than fork.
+    const cap = await mintRoomCapability(password);
+    window.location.href = `/room/${cleanRoomId}#${encodeCapabilityHash(cap, 'edit')}`;
   } else {
     window.location.href = `/room/${cleanRoomId}`;
   }
@@ -82,84 +111,30 @@ export function getRoomIdFromUrl() {
   return match ? match[1] : null;
 }
 
-/**
- * Get access info from URL hash
- * Returns { password, role } or { password: null, role: 'edit' } for unencrypted rooms
- */
-export async function getAccessFromUrl() {
-  const hash = window.location.hash;
-  if (hash && hash.length > 1) {
-    const token = hash.substring(1);
-    const decoded = await decodeAccessToken(token);
-    if (decoded) {
-      return decoded;
-    }
-  }
-  return { password: null, role: 'edit' };
+export function getPasswordFromUrl() {
+  const cap = getCapabilityFromUrl();
+  return cap ? cap.password : null;
+}
+
+export function isEncryptedRoom() {
+  return !!getCapabilityFromUrl();
+}
+
+export function isReadOnly() {
+  const cap = getCapabilityFromUrl();
+  // Encrypted rooms: role from capability. Unencrypted rooms: always editable.
+  return cap ? cap.role === 'view' : false;
 }
 
 /**
- * Extract password from URL (for encryption)
+ * Get a shareable link at the requested permission level. Editors can mint
+ * viewer links (they hold pk); viewers can only share viewer links.
  */
-export async function getPasswordFromUrl() {
-  return (await getAccessFromUrl()).password;
-}
-
-/**
- * Get permission level from URL
- */
-export async function getPermissionFromUrl() {
-  return (await getAccessFromUrl()).role;
-}
-
-/**
- * Check if current room is encrypted (has password)
- */
-export async function isEncryptedRoom() {
-  return !!(await getPasswordFromUrl());
-}
-
-/**
- * Check if current user is in read-only mode
- */
-export async function isReadOnly() {
-  return (await getPermissionFromUrl()) === 'view';
-}
-
-/**
- * Get shareable link for current room
- * @param {boolean} includePassword - Whether to include password in link
- * @param {string} permission - Permission level ('edit' or 'view')
- */
-export async function getShareableLink(includePassword = false, permission = 'edit') {
+export function getShareableLink(includePassword = false, permission = 'edit') {
   const baseUrl = window.location.origin + window.location.pathname;
-
-  if (includePassword) {
-    const access = await getAccessFromUrl();
-    if (access.password) {
-      const token = await encodeAccessToken(access.password, permission);
-      return `${baseUrl}#${token}`;
-    }
-  }
-
-  return baseUrl;
-}
-
-/**
- * Update the room password (changes URL hash)
- * @param {string|null} newPassword - New password (null to remove encryption)
- */
-export async function updatePassword(newPassword) {
-  const roomId = getRoomIdFromUrl();
-  if (!roomId) return;
-
-  if (newPassword) {
-    const token = await encodeAccessToken(newPassword, 'edit');
-    window.location.hash = token;
-  } else {
-    // Remove hash without page reload
-    history.replaceState(null, '', window.location.pathname);
-  }
+  const cap = getCapabilityFromUrl();
+  if (!includePassword || !cap) return baseUrl;
+  return `${baseUrl}#${encodeCapabilityHash(cap, permission)}`;
 }
 
 /**
