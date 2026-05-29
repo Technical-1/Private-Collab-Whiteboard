@@ -146,3 +146,22 @@ describe('SignedDocSync snapshot bootstrap', () => {
     expect(docC.getMap('boards').get('hello')).toBe('world');
   });
 });
+
+describe('epoch lockout', () => {
+  it('rejects an update signed at a different epoch (rotation lockout)', async () => {
+    const cap = await editorCap();              // epoch 1
+    const relay = makeRelay();
+    const docA = new Y.Doc(), docB = new Y.Doc();
+    // Editor signs at epoch 1; the receiver has rotated to epoch 2.
+    const editor = new SignedDocSync(docA, relay.transportFor('A'), cap, await importPrivateKey(cap.privateKeyB64), await importPublicKey(cap.publicKeyB64));
+    const rotated = new SignedDocSync(docB, relay.transportFor('B'), { role: 'view', epoch: 2 }, null, await importPublicKey(cap.publicKeyB64));
+    editor.self = 'A'; rotated.self = 'B';
+    relay.attach({ self: 'A', onMessage: (t, p) => editor._receive(t, p) });
+    relay.attach({ self: 'B', onMessage: (t, p) => rotated._receive(t, p) });
+    await editor.start(); await rotated.start();
+
+    docA.getMap('boards').set('stale', 1);
+    await editor._flush(); await rotated._drain();
+    expect(docB.getMap('boards').get('stale')).toBeUndefined();
+  });
+});
