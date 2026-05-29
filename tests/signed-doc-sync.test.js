@@ -120,3 +120,29 @@ describe('SignedDocSync verify-before-apply', () => {
     expect(docV.getMap('boards').get('evil')).toBeUndefined();
   });
 });
+
+describe('SignedDocSync snapshot bootstrap', () => {
+  it('a late joiner reconstructs state from a relayed snapshot', async () => {
+    const cap = await editorCap();
+    const relay = makeRelay();
+    const docA = new Y.Doc();
+    const editor = new SignedDocSync(docA, relay.transportFor('A'), cap, await importPrivateKey(cap.privateKeyB64), await importPublicKey(cap.publicKeyB64));
+    editor.self = 'A';
+    relay.attach({ self: 'A', onMessage: (t, p) => editor._receive(t, p) });
+    await editor.start();
+    docA.getMap('boards').set('hello', 'world');
+    await editor._flush();
+    await editor.emitSnapshot();   // editor publishes a signed snapshot
+    await editor._flush();
+
+    // New joiner appears later.
+    const docC = new Y.Doc();
+    const joiner = new SignedDocSync(docC, relay.transportFor('C'), { role: 'view', epoch: cap.epoch }, null, await importPublicKey(cap.publicKeyB64));
+    joiner.self = 'C';
+    relay.attach({ self: 'C', onMessage: (t, p) => joiner._receive(t, p) });
+    await joiner.start();          // sends SNAPSHOT_REQUEST
+    await editor._drain(); await joiner._drain();
+
+    expect(docC.getMap('boards').get('hello')).toBe('world');
+  });
+});

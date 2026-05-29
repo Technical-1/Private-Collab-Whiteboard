@@ -23,6 +23,8 @@ export class SignedDocSync {
     this.privateKey = privateKey;
     this.publicKey = publicKey;
     this._pending = Promise.resolve(); // serializes async sign/verify work (test hook)
+    this._latestSnapshot = null; // { payload: Uint8Array } cached editor-signed SNAPSHOT
+    this._snapshotTimer = null;
 
     transport.onMessage = (type, payload) => this._receive(type, payload);
 
@@ -34,17 +36,22 @@ export class SignedDocSync {
         const sig = await signUpdate(this.privateKey, update, this.epoch);
         this.transport.send(MSG.UPDATE, encodeEnvelope(update, this.epoch, sig));
       });
+      this._scheduleSnapshot();
     };
     doc.on('update', this._updateHandler);
   }
 
-  async start() { /* snapshot/bootstrap added in a later task */ }
+  async start() {
+    // Ask the room for current state. Editors will also have their own local doc.
+    this.transport.send(MSG.SNAPSHOT_REQUEST, new Uint8Array(0));
+  }
 
   _enqueue(fn) { this._pending = this._pending.then(fn).catch((e) => console.error(e)); }
 
   _receive(type, payload) {
     if (type === MSG.UPDATE) this._enqueue(() => this._applySigned(payload));
-    // SNAPSHOT / SNAPSHOT_REQUEST handled in a later task
+    else if (type === MSG.SNAPSHOT) this._enqueue(() => this._applySnapshot(payload));
+    else if (type === MSG.SNAPSHOT_REQUEST) this._enqueue(() => this._answerSnapshotRequest());
   }
 
   async _applySigned(payload) {
@@ -56,7 +63,46 @@ export class SignedDocSync {
     Y.applyUpdate(this.doc, env.update, REMOTE_ORIGIN);
   }
 
-  destroy() { this.doc.off('update', this._updateHandler); }
+  _scheduleSnapshot() {
+    if (!this.isEditor) return;
+    if (this._snapshotTimer) return;
+    this._snapshotTimer = setTimeout(() => {
+      this._snapshotTimer = null;
+      this._enqueue(() => this.emitSnapshot());
+    }, 1000);
+  }
+
+  /** Editor: sign a full-state snapshot, cache it, broadcast it. */
+  async emitSnapshot() {
+    if (!this.isEditor) return;
+    const state = Y.encodeStateAsUpdate(this.doc);
+    const sig = await signUpdate(this.privateKey, state, this.epoch);
+    const payload = encodeEnvelope(state, this.epoch, sig);
+    this._latestSnapshot = { payload };
+    this.transport.send(MSG.SNAPSHOT, payload);
+  }
+
+  async _applySnapshot(payload) {
+    let env;
+    try { env = decodeEnvelope(payload); } catch { return; }
+    if (env.epoch !== this.epoch) return;
+    const ok = await verifyUpdate(this.publicKey, env.update, env.epoch, env.sig);
+    if (!ok) return;
+    // Cache verified snapshot so we can relay it later (even viewers).
+    this._latestSnapshot = { payload };
+    Y.applyUpdate(this.doc, env.update, REMOTE_ORIGIN);
+  }
+
+  async _answerSnapshotRequest() {
+    // Editors produce a fresh snapshot; anyone with a cached one relays it.
+    if (this.isEditor) { await this.emitSnapshot(); return; }
+    if (this._latestSnapshot) this.transport.send(MSG.SNAPSHOT, this._latestSnapshot.payload);
+  }
+
+  destroy() {
+    if (this._snapshotTimer) { clearTimeout(this._snapshotTimer); this._snapshotTimer = null; }
+    this.doc.off('update', this._updateHandler);
+  }
 
   // ----- test hooks -----
   async _flush() { await this._pending; }
