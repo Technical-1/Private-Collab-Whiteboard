@@ -416,11 +416,15 @@ function handleMouseDown(e) {
         setSelected(shape.id, e.shiftKey);
       }
     } else {
-      // Only clear selection if clicking on truly empty canvas
-      // Give a small delay to let button clicks register first
+      // Only clear selection if clicking on truly empty canvas.
+      // Give a small delay to let button clicks register first.
+      // Capture the click coords locally - startX/startY are module-level and
+      // can be overwritten by an intervening mousedown before the timeout runs.
+      const clickX = startX;
+      const clickY = startY;
       setTimeout(() => {
         // Check if we're still not over any shape (user didn't move to a shape)
-        if (!findShapeAtPoint(startX, startY)) {
+        if (!findShapeAtPoint(clickX, clickY)) {
           clearSelection();
         }
       }, 50);

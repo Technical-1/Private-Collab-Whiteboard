@@ -37,7 +37,9 @@ export const USER_COLORS = [
 ];
 
 // PartyKit server configuration
-export const PARTYKIT_HOST = 'whiteboard-party.jacobcanada.partykit.dev';
+// Must match the "name" in partykit.json (whiteboard-collab) and the deployed
+// host. This is the single source of truth - yjs-setup.js imports it.
+export const PARTYKIT_HOST = 'whiteboard-collab.technical-1.partykit.dev';
 
 // UI configuration
 export const TOUCH_TARGET_MIN_SIZE = 44;  // Minimum touch target size in pixels

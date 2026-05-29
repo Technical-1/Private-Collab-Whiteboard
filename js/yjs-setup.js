@@ -2,9 +2,7 @@ import * as Y from 'yjs';
 import { IndexeddbPersistence } from 'y-indexeddb';
 import { SyncProvider } from './sync-provider.js';
 import { deriveKey, encrypt, decrypt } from './crypto.js';
-
-// PartyKit host
-const PARTYKIT_HOST = 'whiteboard-collab.technical-1.partykit.dev';
+import { PARTYKIT_HOST } from './config.js';
 
 /**
  * Wait for a provider to emit a sync event
