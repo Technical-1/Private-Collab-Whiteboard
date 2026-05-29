@@ -41,11 +41,13 @@ export class SyncProvider {
     this.wsUnsuccessfulReconnects = 0;
     this.maxBackoffTime = 2500;
 
-    // Callbacks
+    // Callbacks. onMessage/onConnect are PUBLIC settable properties: the signing
+    // layer (SignedDocSync) assigns them after construction, so they must not be
+    // private fields read only from constructor options.
     this._onStatus = options.onStatus || (() => {});
-    this._onTypedMessage = options.onMessage || (() => {});
-    // Set by the signing layer; invoked on every (re)connect so it can re-ask
-    // the room for state once the socket is actually OPEN.
+    this.onMessage = options.onMessage || null;
+    // Invoked on every (re)connect so the signing layer can re-ask for state
+    // once the socket is actually OPEN.
     this.onConnect = options.onConnect || null;
 
     // Bind methods
@@ -167,7 +169,7 @@ export class SyncProvider {
           return;
         }
       }
-      this._onTypedMessage(type, payload);
+      if (this.onMessage) this.onMessage(type, payload);
     } catch (error) {
       console.error('Failed to process message:', error);
     }
