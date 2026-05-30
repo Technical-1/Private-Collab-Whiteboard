@@ -1,10 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import * as Y from 'yjs';
 import {
-  importPrivateKey, importPublicKey,
+  importPrivateKey, importPublicKey, signStatement,
 } from '../js/crypto.js';
 import { SignedDocSync } from '../js/signed-doc-sync.js';
-import { MSG, encodeEnvelope, signUpdate } from '../js/protocol.js';
+import { MSG, encodeEnvelope, signUpdate, encodeRotateNotice } from '../js/protocol.js';
 import { mintRoomCapability } from '../js/room-manager.js';
 
 // Capture the Y.Doc update bytes produced by a single mutation.
@@ -230,5 +230,52 @@ describe('cert-gated verification', () => {
     peer._receive(MSG.UPDATE, encodeEnvelope(upd, cap.epoch, sig));
     await peer._drain();
     expect(docPeer.getMap('boards').get('evil')).toBeUndefined();
+  });
+});
+
+describe('rotation notice', () => {
+  it('owner broadcasts a notice; a peer on the old epoch supersedes and fires onRotated', async () => {
+    const cap = await mintRoomCapability('pw');
+    const sent = [];
+    const ownerT = { send: (t, p) => sent.push([t, p]), onMessage: null, onConnect: null };
+    const owner = new SignedDocSync(new Y.Doc(), ownerT, await opts(cap, 'owner'));
+    await owner.start();
+    await owner.broadcastRotate(cap.epoch + 1);
+    const rotateMsg = sent.find(([t]) => t === MSG.ROTATE);
+    expect(rotateMsg).toBeTruthy();
+
+    const docP = new Y.Doc();
+    const peer = new SignedDocSync(docP, { send() {}, onMessage: null }, await opts(cap, 'view'));
+    let rotatedTo = null;
+    peer.onRotated = (to) => { rotatedTo = to; };
+    await peer.start();
+    peer._receive(MSG.ROTATE, rotateMsg[1]);
+    await peer._drain();
+    expect(peer._superseded).toBe(true);
+    expect(rotatedTo).toBe(cap.epoch + 1);
+  });
+
+  it('ignores a rotate notice NOT signed by the owner', async () => {
+    const cap = await mintRoomCapability('pw');
+    const attacker = await mintRoomCapability('pw'); // different owner key
+    const notice = { type: 'rotate', room: cap.pkO, from: cap.epoch, to: cap.epoch + 1 };
+    const sig = await signStatement(await importPrivateKey(attacker.skO), notice);
+    const peer = new SignedDocSync(new Y.Doc(), { send() {}, onMessage: null }, await opts(cap, 'view'));
+    await peer.start();
+    peer._receive(MSG.ROTATE, encodeRotateNotice(notice, sig));
+    await peer._drain();
+    expect(peer._superseded).toBe(false);
+  });
+
+  it('a superseded peer stops applying old-epoch updates', async () => {
+    const cap = await mintRoomCapability('pw');
+    const peer = new SignedDocSync(new Y.Doc(), { send() {}, onMessage: null }, await opts(cap, 'view'));
+    await peer.start();
+    peer._superseded = true;
+    const upd = captureUpdate((d) => d.getMap('boards').set('late', 1));
+    const sig = await signUpdate(await importPrivateKey(cap.skE), upd, cap.epoch);
+    peer._receive(MSG.UPDATE, encodeEnvelope(upd, cap.epoch, sig));
+    await peer._drain();
+    expect(peer.doc.getMap('boards').get('late')).toBeUndefined();
   });
 });

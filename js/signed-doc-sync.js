@@ -125,9 +125,11 @@ export class SignedDocSync {
     if (type === MSG.UPDATE) this._enqueue(() => this._applySigned(payload));
     else if (type === MSG.SNAPSHOT) this._enqueue(() => this._applySnapshot(payload));
     else if (type === MSG.SNAPSHOT_REQUEST) this._enqueue(() => this._answerSnapshotRequest());
+    else if (type === MSG.ROTATE) this._enqueue(() => this._handleRotate(payload));
   }
 
   async _applySigned(payload) {
+    if (this._superseded) return;                               // epoch rotated away -> drop
     let env;
     try { env = decodeEnvelope(payload); } catch { return; }
     if (env.epoch !== this.epoch) return;                       // wrong epoch -> drop
@@ -161,6 +163,7 @@ export class SignedDocSync {
   }
 
   async _applySnapshot(payload) {
+    if (this._superseded) return;                               // epoch rotated away -> drop
     let env;
     try { env = decodeEnvelope(payload); } catch { return; }
     if (env.epoch !== this.epoch) return;
@@ -180,6 +183,31 @@ export class SignedDocSync {
     // Editors produce a fresh snapshot; anyone with a cached one relays it.
     if (this.isEditor) { await this.emitSnapshot(); return; }
     if (this._latestSnapshot) this.transport.send(MSG.SNAPSHOT, this._latestSnapshot.payload);
+  }
+
+  /**
+   * Owner only: announce that the room has rotated to a new epoch. Only the
+   * owner holds ownerSignKey, so editors cannot produce a notice peers accept.
+   */
+  async broadcastRotate(toEpoch) {
+    if (!this.isOwner || !this.ownerSignKey) return;
+    const notice = { type: 'rotate', room: this.ownerPubB64, from: this.epoch, to: toEpoch };
+    const sig = await signStatement(this.ownerSignKey, notice);
+    this.transport.send(MSG.ROTATE, encodeRotateNotice(notice, sig));
+  }
+
+  async _handleRotate(payload) {
+    if (!this.signed || !this.ownerVerifyKey) return;
+    let parsed;
+    try { parsed = decodeRotateNotice(payload); } catch { return; }
+    const notice = parsed && parsed.notice;
+    const sig = parsed && parsed.sig;
+    if (!notice || notice.type !== 'rotate' || notice.room !== this.ownerPubB64) return;
+    if (notice.from !== this.epoch) return;                 // not about our epoch
+    const ok = await verifyStatement(this.ownerVerifyKey, notice, sig);
+    if (!ok) return;                                        // not owner-signed -> ignore
+    this._superseded = true;                                // stop applying old-epoch edits
+    if (this.onRotated) this.onRotated(notice.to);
   }
 
   destroy() {
