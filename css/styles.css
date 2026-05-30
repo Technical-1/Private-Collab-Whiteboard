@@ -2342,7 +2342,9 @@ canvas {
 .read-only-mode .toolbar-panel,
 .read-only-mode .options-panel,
 .read-only-mode #clear-board,
-.read-only-mode .shape-control-btn {
+.read-only-mode .shape-control-btn,
+.read-only-mode .actions-section,
+.read-only-mode .share-section {
   display: none !important;
 }
 
