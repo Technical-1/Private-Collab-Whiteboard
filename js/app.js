@@ -343,10 +343,13 @@ async function main() {
     };
   }
 
-  // Wire up password change (for encrypted rooms)
+  // Wire up password change (for encrypted rooms). Editors only — rotation mints
+  // a new key/epoch and locks out old links, so it must not be available to
+  // view-only users (the controls are also hidden for them in read-only mode).
   const changePasswordBtn = document.getElementById('change-password');
   if (changePasswordBtn) {
     changePasswordBtn.onclick = async () => {
+      if (readOnly) return; // view-only users cannot rotate the room
       const newPassword = await showPasswordModal(
         'Change Password',
         'Enter a new password for this room. Leave empty to remove encryption.',
@@ -359,10 +362,11 @@ async function main() {
     };
   }
 
-  // Wire up add encryption (for unencrypted rooms)
+  // Wire up add encryption (for unencrypted rooms). Editors only.
   const addEncryptionBtn = document.getElementById('add-encryption');
   if (addEncryptionBtn) {
     addEncryptionBtn.onclick = async () => {
+      if (readOnly) return; // view-only users cannot change encryption
       const newPassword = await showPasswordModal(
         'Enable Encryption',
         'Add a password to encrypt all room data. Only users with the password will be able to access this room.'
