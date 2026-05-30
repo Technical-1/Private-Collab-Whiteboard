@@ -205,12 +205,7 @@ export function showInviteModal(currentLink, isEncrypted, includePassword) {
         </div>
 
         ${isEncrypted ? `
-        <div class="modal-input-group">
-          <label class="checkbox-row">
-            <input type="checkbox" id="modal-include-password" ${includePassword ? 'checked' : ''}>
-            <span>Include password in link</span>
-          </label>
-        </div>
+        <p class="modal-hint">This link includes the room password and keys, so anyone with it can access the room at the selected permission level.</p>
         ` : ''}
       </div>
     `;

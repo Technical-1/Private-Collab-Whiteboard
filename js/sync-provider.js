@@ -165,7 +165,12 @@ export class SyncProvider {
         try {
           payload = await this.decrypt(payload, this.encryptionKey);
         } catch (err) {
-          this._onStatus({ status: 'decryption-failed' });
+          // Drop the frame. In the capability model the password lives in the
+          // link, so an undecryptable frame is an incompatible peer (e.g. someone
+          // who opened the bare room URL, or a pre-rotation client) — NOT the
+          // local user's "wrong password". Surfacing it would wrongly nuke a
+          // working session, so we ignore it rather than emit decryption-failed.
+          console.debug('Dropping undecryptable frame from an incompatible peer');
           return;
         }
       }
