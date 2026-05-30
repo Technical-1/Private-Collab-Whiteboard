@@ -105,7 +105,13 @@ export async function initializeYjs(roomId, capability = null) {
   }
   await signedSync.start();
 
-  if (!boards.has('default')) boards.set('default', new Y.Array());
+  // NOTE: we intentionally do NOT eagerly create the 'default' board here.
+  // Each client doing `boards.set('default', new Y.Array())` independently
+  // creates a Y.Map conflict whose winner is decided by random clientID, which
+  // can orphan the content-bearing array (drawings vanish / don't sync). The
+  // default board is created lazily on the first write instead (see drawing.js
+  // addDrawing), so a joiner receives the editor's array via snapshot and never
+  // conflicts.
 
   return {
     ydoc, boards, provider, indexeddbProvider, signedSync,

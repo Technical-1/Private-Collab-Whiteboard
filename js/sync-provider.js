@@ -182,12 +182,19 @@ export class SyncProvider {
 
   _handleAwarenessMessage(payload) {
     try {
+      const before = this.awareness.getStates().size;
       const decoder = decoding.createDecoder(payload);
       awarenessProtocol.applyAwarenessUpdate(
         this.awareness,
         decoding.readVarUint8Array(decoder),
         this
       );
+      // A new peer appeared. The relay doesn't replay our earlier announcement,
+      // so re-broadcast our own state to make presence reliable for newcomers
+      // (also lets a keyless visitor learn an encrypted editor is present).
+      if (this.awareness.getStates().size > before) {
+        this._broadcastAwareness([this.doc.clientID]);
+      }
     } catch (error) {
       console.error('Failed to apply awareness update:', error);
     }

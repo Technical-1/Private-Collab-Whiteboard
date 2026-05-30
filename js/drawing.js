@@ -1,3 +1,4 @@
+import * as Y from 'yjs';
 import { generateId } from './utils.js';
 import {
   updateCursorPosition,
@@ -101,6 +102,12 @@ let startX = 0;
 let startY = 0;
 let currentTool = 'select';
 let currentBoardObserver = null;
+// The exact Y.Array instance we're currently observing. The boards Y.Map can
+// swap a board's array instance out from under us — e.g. when each peer creates
+// its own `default` board, a Y.Map conflict makes one instance win and orphans
+// the other. We must re-subscribe to the live instance or remote edits stop
+// triggering redraws even though the document itself syncs fine.
+let observedBoardArray = null;
 
 // Viewport state for infinite canvas
 let viewport = {
@@ -320,13 +327,17 @@ export function setupDrawing(canvasEl, boardsMap, awarenessInstance, getBoardFn)
   // Subscribe to initial board
   subscribeToBoard(getCurrentBoard());
 
-  // Watch for board map changes (in case boards are created by remote peers)
+  // Watch for board map changes (boards created by remote peers, or the current
+  // board's array instance being replaced by a Y.Map conflict).
   const boardsObserverFn = () => {
     const currentBoardName = getCurrentBoard();
     const board = boards.get(currentBoardName);
 
-    // If current board now exists but we're not observing it, subscribe
-    if (board && !currentBoardObserver) {
+    // Re-subscribe if the current board appeared, or if its array INSTANCE
+    // changed (e.g. a remote 'default' won a conflict against our local one).
+    // Without the instance check, our observer stays bound to an orphaned array
+    // and remote edits never trigger a redraw.
+    if (board && (!currentBoardObserver || board !== observedBoardArray)) {
       subscribeToBoard(currentBoardName);
     }
   };
@@ -2044,8 +2055,15 @@ function addDrawing(data) {
   if (!canMutate()) return; // Block in read-only mode
 
   const boardName = getCurrentBoard();
-  const board = boards.get(boardName);
-  if (!board) return;
+  // Lazily create the board on first write. We do NOT pre-create it at room
+  // init: independent creation by each client conflicts in the Y.Map and can
+  // orphan content. Creating it only when someone actually draws means a joiner
+  // receives the existing array via snapshot and never conflicts.
+  let board = boards.get(boardName);
+  if (!board) {
+    boards.set(boardName, new Y.Array());
+    board = boards.get(boardName);
+  }
 
   const localState = awareness.getLocalState();
   const user = localState?.user || { name: 'Anonymous', color: '#000000' };
@@ -2075,6 +2093,7 @@ export function subscribeToBoard(boardName) {
     currentBoardObserver();
     currentBoardObserver = null;
   }
+  observedBoardArray = null;
 
   const board = boards.get(boardName);
   if (!board) {
@@ -2091,6 +2110,7 @@ export function subscribeToBoard(boardName) {
   };
 
   board.observe(observer);
+  observedBoardArray = board;
   currentBoardObserver = () => board.unobserve(observer);
 
   // Initial draw

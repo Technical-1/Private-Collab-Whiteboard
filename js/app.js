@@ -111,13 +111,14 @@ async function main() {
     isEncrypted: isEncrypted
   });
 
-  // Initialize user awareness with callback for live drawing updates
+  // Initialize user awareness with callback for live drawing updates.
+  // Pass isEncrypted so peers can detect a keyless visitor to an encrypted room.
   const { color } = initializeAwareness(awareness, userName, () => {
     // Redraw canvas when other users' awareness changes (for live drawing preview)
     if (drawingController) {
       drawingController.redraw();
     }
-  });
+  }, isEncrypted);
 
   // Set containers for rendering
   setUsersContainer(document.getElementById('users'));
@@ -387,6 +388,18 @@ async function main() {
     } else {
       updateStatus('Connecting...');
     }
+  });
+
+  // A keyless visitor opened the bare URL of a password-protected room. The
+  // capability (password + keys) lives only in the invite link, so they can't
+  // read or edit until they open it.
+  window.addEventListener('room-access-mismatch', async () => {
+    if (isEncrypted) return; // we have the capability; not us
+    updateStatus('Invite link required');
+    await showAlert(
+      'Invite Link Required',
+      'This room is password-protected. Open the invite link you were given to view or edit it.'
+    );
   });
 
   // Listen for board changes to update empty state
