@@ -127,13 +127,22 @@ export function isReadOnly() {
 }
 
 /**
- * Get a shareable link at the requested permission level. Editors can mint
- * viewer links (they hold pk); viewers can only share viewer links.
+ * Get a shareable link at the requested permission level.
+ *
+ * For a capability (encrypted) room the link MUST carry the capability — the
+ * password and keys live entirely in the URL hash. A link without it points the
+ * recipient at a different, open (editable) room on the same id and corrupts the
+ * original with decryption errors, so `includePassword` is intentionally ignored
+ * here (kept in the signature for existing callers). Open rooms have no
+ * capability, so they share the bare URL.
+ *
+ * @param {boolean} _includePassword - deprecated/ignored (capability is always embedded)
+ * @param {'edit'|'view'} permission - permission level for the minted link
  */
-export function getShareableLink(includePassword = false, permission = 'edit') {
+export function getShareableLink(_includePassword = false, permission = 'edit') {
   const baseUrl = window.location.origin + window.location.pathname;
   const cap = getCapabilityFromUrl();
-  if (!includePassword || !cap) return baseUrl;
+  if (!cap) return baseUrl; // open room: nothing to embed
   return `${baseUrl}#${encodeCapabilityHash(cap, permission)}`;
 }
 
