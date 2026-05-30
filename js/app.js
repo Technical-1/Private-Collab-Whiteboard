@@ -309,17 +309,16 @@ async function main() {
     passwordControls.style.display = isEncrypted ? 'block' : 'none';
   }
 
-  // Simple copy link button
+  // Simple copy link button. For encrypted rooms the capability (password +
+  // keys) is always embedded — a link without it would drop the recipient into a
+  // different, open room. This is the quick "edit" link; use Invite for view-only.
   document.getElementById('copy-link').onclick = async () => {
-    const includePassword = document.getElementById('include-password')?.checked || false;
-    const link = getShareableLink(includePassword);
+    const link = getShareableLink(true);
     copyToClipboard(link);
 
-    if (isEncrypted && !includePassword) {
-      await showAlert('Link Copied', 'The link has been copied. Recipients will need the password to access the room.');
-    } else {
-      await showAlert('Link Copied', 'The share link has been copied to your clipboard.');
-    }
+    await showAlert('Link Copied', isEncrypted
+      ? 'The link has been copied. It includes the room password — anyone with it can access the room.'
+      : 'The share link has been copied to your clipboard.');
   };
 
   // Add invite button functionality (if exists)
