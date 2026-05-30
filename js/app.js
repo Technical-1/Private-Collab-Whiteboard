@@ -1,4 +1,4 @@
-import { initializeYjs, changePassword } from './yjs-setup.js';
+import { initializeYjs, rotateRoom } from './yjs-setup.js';
 import {
   initializeAwareness,
   setUsersContainer,
@@ -13,7 +13,9 @@ import {
   getCapabilityFromUrl,
   getShareableLink,
   copyToClipboard,
-  isEncryptedRoom
+  isEncryptedRoom,
+  mintRoomCapability,
+  encodeCapabilityHash
 } from './room-manager.js';
 import {
   initModals,
@@ -90,11 +92,15 @@ async function main() {
   yjsInstance = await initializeYjs(roomId, cap);
   const { boards, awareness, isEncrypted, role } = yjsInstance;
 
+  // Derive permission flags from role
+  readOnly = role === 'view';
+  const isOwner = role === 'owner';
+  document.body.dataset.role = role;
+
   // Update UI to show encryption status
-  updateEncryptionIndicator(isEncrypted);
+  updateEncryptionIndicator(isEncrypted, isOwner);
 
   // Check read-only mode (derived from role in capability)
-  readOnly = role === 'view';
   if (readOnly) {
     document.body.classList.add('read-only-mode');
   }
@@ -343,21 +349,16 @@ async function main() {
     };
   }
 
-  // Wire up password change (for encrypted rooms). Editors only — rotation mints
-  // a new key/epoch and locks out old links, so it must not be available to
-  // view-only users (the controls are also hidden for them in read-only mode).
+  // Wire up password change (owner-only). Rotation mints a new key/epoch and
+  // locks out old links; only the room owner may trigger it.
   const changePasswordBtn = document.getElementById('change-password');
   if (changePasswordBtn) {
     changePasswordBtn.onclick = async () => {
-      if (readOnly) return; // view-only users cannot rotate the room
-      const newPassword = await showPasswordModal(
-        'Change Password',
-        'Enter a new password for this room. Leave empty to remove encryption.',
-        true
-      );
-
-      if (newPassword !== null) {
-        changePassword(roomId, newPassword);
+      if (!isOwner) return; // only the room owner can rotate
+      const newPassword = await showPasswordModal('Change Password',
+        'Enter a new password. This rotates the room — everyone will need a new invite link.', true);
+      if (newPassword !== null && newPassword !== '') {
+        await rotateRoom(roomId, newPassword, yjsInstance.signedSync);
       }
     };
   }
@@ -366,17 +367,23 @@ async function main() {
   const addEncryptionBtn = document.getElementById('add-encryption');
   if (addEncryptionBtn) {
     addEncryptionBtn.onclick = async () => {
-      if (readOnly) return; // view-only users cannot change encryption
-      const newPassword = await showPasswordModal(
-        'Enable Encryption',
-        'Add a password to encrypt all room data. Only users with the password will be able to access this room.'
-      );
-
+      if (readOnly) return;
+      const newPassword = await showPasswordModal('Enable Encryption',
+        'Add a password to encrypt this room. You become the owner; share the new invite link.');
       if (newPassword) {
-        changePassword(roomId, newPassword);
+        const cap = await mintRoomCapability(newPassword);
+        window.location.href = `${window.location.origin}/room/${roomId}#${encodeCapabilityHash(cap, 'owner')}`;
+        window.location.reload();
       }
     };
   }
+
+  // Notify superseded peers when the room is rotated by the owner
+  window.addEventListener('room-rotated', async () => {
+    updateStatus('Room rotated');
+    await showAlert('Room Rotated',
+      'The owner rotated this room. Ask them for a new invite link to keep collaborating.');
+  });
 
   // Listen for connection status
   window.addEventListener('yjs-status', async (e) => {
@@ -680,7 +687,7 @@ function updateEmptyState(boardIsEmpty) {
   }
 }
 
-function updateEncryptionIndicator(isEncrypted) {
+function updateEncryptionIndicator(isEncrypted, isOwner = false) {
   const indicator = document.getElementById('encryption-indicator');
   if (indicator) {
     indicator.style.display = isEncrypted ? 'flex' : 'none';
@@ -694,7 +701,8 @@ function updateEncryptionIndicator(isEncrypted) {
     addEncryptionBtn.style.display = isEncrypted ? 'none' : 'block';
   }
   if (changePasswordBtn) {
-    changePasswordBtn.style.display = isEncrypted ? 'block' : 'none';
+    // Change Password only visible to encrypted-room owners
+    changePasswordBtn.style.display = (isEncrypted && (isOwner || document.body.dataset.role === 'owner')) ? 'block' : 'none';
   }
 }
 
