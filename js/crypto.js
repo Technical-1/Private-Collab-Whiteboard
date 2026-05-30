@@ -212,3 +212,40 @@ export async function verifyData(publicKey, data, signature) {
     return false;
   }
 }
+
+// ============ Signed statements (epoch certs, rotation notices) ============
+
+// Deterministic serialization of a FLAT object (string/number values only):
+// the replacer array fixes key inclusion + order, so sign and verify hash the
+// exact same bytes regardless of property order.
+function canonicalJSON(obj) {
+  return JSON.stringify(obj, Object.keys(obj).sort());
+}
+
+/**
+ * Sign a flat JS object with an ECDSA private key.
+ * @param {CryptoKey} privateKey - ECDSA sign key
+ * @param {Object} obj - FLAT object (string/number values only; nested objects
+ *   are NOT supported — the canonical-JSON replacer would drop their keys)
+ * @returns {Promise<string>} base64 signature
+ */
+export async function signStatement(privateKey, obj) {
+  const bytes = new TextEncoder().encode(canonicalJSON(obj));
+  return bytesToBase64(await signData(privateKey, bytes));
+}
+
+/**
+ * Verify a flat JS object against a base64 signature. Never throws.
+ * @param {CryptoKey} publicKey - ECDSA verify key
+ * @param {Object} obj - FLAT object (string/number values only; see signStatement)
+ * @param {string} sigB64 - base64 signature from signStatement
+ * @returns {Promise<boolean>}
+ */
+export async function verifyStatement(publicKey, obj, sigB64) {
+  try {
+    const bytes = new TextEncoder().encode(canonicalJSON(obj));
+    return await verifyData(publicKey, bytes, base64ToBytes(sigB64));
+  } catch {
+    return false;
+  }
+}
