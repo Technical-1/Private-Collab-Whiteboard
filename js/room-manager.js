@@ -1,72 +1,63 @@
 import { generateRoomId } from './utils.js';
-import {
-  generateSigningKeyPair, exportPublicKey, exportPrivateKey,
-} from './crypto.js';
+import { generateSigningKeyPair, exportPublicKey, exportPrivateKey } from './crypto.js';
+import { mintCert } from './room-cert.js';
 
-/**
- * Encode an editor capability link payload (goes after '#').
- * Carries both private (sk, PKCS8 base64) and public (pk, raw base64) keys.
- */
-export function encodeEditorLink(password, privateKeyB64, publicKeyB64, epoch) {
-  const token = { v: 2, p: password, r: 'edit', e: epoch, sk: privateKeyB64, pk: publicKeyB64 };
-  return btoa(encodeURIComponent(JSON.stringify(token)));
+function encodeLink(obj) {
+  return btoa(encodeURIComponent(JSON.stringify(obj)));
 }
 
-/** Encode a viewer capability link payload (public key only). */
-export function encodeViewerLink(password, publicKeyB64, epoch) {
-  const token = { v: 2, p: password, r: 'view', e: epoch, pk: publicKeyB64 };
-  return btoa(encodeURIComponent(JSON.stringify(token)));
+/** Owner link: full authority (skO + skE + cert). */
+export function encodeOwnerLink(cap) {
+  return encodeLink({ v: 3, r: 'owner', e: cap.epoch, p: cap.password, pkO: cap.pkO, skO: cap.skO, pkE: cap.pkE, skE: cap.skE, cert: cap.cert });
+}
+/** Editor link: can edit, cannot rotate (no skO). */
+export function encodeEditorLink(cap) {
+  return encodeLink({ v: 3, r: 'edit', e: cap.epoch, p: cap.password, pkO: cap.pkO, pkE: cap.pkE, skE: cap.skE, cert: cap.cert });
+}
+/** Viewer link: read-only (no private keys). */
+export function encodeViewerLink(cap) {
+  return encodeLink({ v: 3, r: 'view', e: cap.epoch, p: cap.password, pkO: cap.pkO, pkE: cap.pkE, cert: cap.cert });
 }
 
 /**
- * Decode a capability token. Returns a normalized capability or null.
- * Hard break: only v:2 tokens are accepted. An 'edit' token without a private
- * key is downgraded to 'view' (no key => cannot sign).
- * @returns {{version:2, password:string, role:'edit'|'view', epoch:number,
- *            privateKeyB64:string|null, publicKeyB64:string}|null}
+ * Decode a v3 capability token. Hard break: only v:3 accepted. A claimed role
+ * without the matching key is downgraded (no key => can't act in that role).
  */
 export function decodeCapabilityToken(token) {
   try {
     const d = JSON.parse(decodeURIComponent(atob(token)));
-    if (d.v !== 2 || !d.p || !d.pk || typeof d.e !== 'number') return null;
-    const hasPriv = d.r === 'edit' && typeof d.sk === 'string' && d.sk.length > 0;
+    if (d.v !== 3 || !d.p || !d.pkO || !d.pkE || !d.cert || typeof d.e !== 'number') return null;
+    const hasOwner = d.r === 'owner' && typeof d.skO === 'string' && typeof d.skE === 'string';
+    const hasEditor = (d.r === 'owner' || d.r === 'edit') && typeof d.skE === 'string';
+    const role = hasOwner ? 'owner' : hasEditor ? 'edit' : 'view';
     return {
-      version: 2,
-      password: d.p,
-      role: hasPriv ? 'edit' : 'view',
-      epoch: d.e,
-      privateKeyB64: hasPriv ? d.sk : null,
-      publicKeyB64: d.pk,
+      version: 3, role, epoch: d.e, password: d.p, pkO: d.pkO, pkE: d.pkE,
+      skO: hasOwner ? d.skO : null,
+      skE: hasEditor ? d.skE : null,
+      cert: d.cert,
     };
   } catch {
     return null;
   }
 }
 
-/**
- * Mint a brand-new editor capability for a room: random password-independent
- * Ed25519 keypair at epoch 1.
- * @param {string} password
- * @returns {Promise<object>} capability
- */
+/** Mint a brand-new OWNER capability: owner root key + first editor key + cert_1. */
 export async function mintRoomCapability(password) {
-  const kp = await generateSigningKeyPair();
-  const publicKeyB64 = await exportPublicKey(kp.publicKey);
-  const privateKeyB64 = await exportPrivateKey(kp.privateKey);
-  return { version: 2, password, role: 'edit', epoch: 1, privateKeyB64, publicKeyB64 };
+  const owner = await generateSigningKeyPair();
+  const editor = await generateSigningKeyPair();
+  const pkO = await exportPublicKey(owner.publicKey);
+  const skO = await exportPrivateKey(owner.privateKey);
+  const pkE = await exportPublicKey(editor.publicKey);
+  const skE = await exportPrivateKey(editor.privateKey);
+  const cert = await mintCert(skO, pkO, 1, pkE);
+  return { version: 3, role: 'owner', epoch: 1, password, pkO, skO, pkE, skE, cert };
 }
 
-/** @returns {'edit'|'view'} */
-export function capabilityRole(cap) {
-  return cap && cap.role === 'edit' ? 'edit' : 'view';
-}
-
-/** Build the '#' hash payload for a capability (editor form if it has a private key). */
+/** Build the '#' hash for a capability at the requested role (owner downgrades to edit/view). */
 export function encodeCapabilityHash(cap, role = cap.role) {
-  if (role === 'edit' && cap.privateKeyB64) {
-    return encodeEditorLink(cap.password, cap.privateKeyB64, cap.publicKeyB64, cap.epoch);
-  }
-  return encodeViewerLink(cap.password, cap.publicKeyB64, cap.epoch);
+  if (role === 'owner' && cap.skO) return encodeOwnerLink(cap);
+  if (role === 'edit' && cap.skE) return encodeEditorLink(cap);
+  return encodeViewerLink(cap);
 }
 
 /**
