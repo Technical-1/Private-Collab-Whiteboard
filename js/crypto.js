@@ -132,7 +132,15 @@ export function generatePassword(length = 16) {
   return Array.from(randomValues, (v) => charset[v % charset.length]).join('');
 }
 
-// ============ Ed25519 signing (authorization layer) ============
+// ============ ECDSA P-256 signing (authorization layer) ============
+//
+// We sign room updates to enforce edit vs view-only. ECDSA with the P-256 curve
+// is used (not Ed25519) because Ed25519 in the Web Crypto API only shipped in
+// very recent browser versions, so it fails with "Unrecognized name" on most
+// installed browsers. ECDSA P-256 has been supported across all Web Crypto
+// implementations for years. Signatures are IEEE-P1363 raw r||s (64 bytes).
+const SIGN_ALGO = { name: 'ECDSA', namedCurve: 'P-256' };
+const SIGN_HASH = { name: 'ECDSA', hash: 'SHA-256' };
 
 // Base64 helpers for raw byte arrays (URL-safe-agnostic; links are base64-of-JSON already).
 function bytesToBase64(bytes) {
@@ -150,14 +158,14 @@ function base64ToBytes(b64) {
 }
 
 /**
- * Generate an Ed25519 signing keypair (extractable, for export into links).
+ * Generate an ECDSA P-256 signing keypair (extractable, for export into links).
  * @returns {Promise<CryptoKeyPair>}
  */
 export async function generateSigningKeyPair() {
-  return crypto.subtle.generateKey({ name: 'Ed25519' }, true, ['sign', 'verify']);
+  return crypto.subtle.generateKey(SIGN_ALGO, true, ['sign', 'verify']);
 }
 
-/** Export a public key as base64 (raw, 32 bytes). */
+/** Export a public key as base64 (raw uncompressed EC point). */
 export async function exportPublicKey(publicKey) {
   const raw = await crypto.subtle.exportKey('raw', publicKey);
   return bytesToBase64(raw);
@@ -171,35 +179,35 @@ export async function exportPrivateKey(privateKey) {
 
 /** Import a base64 (raw) public key for verification (non-extractable). */
 export async function importPublicKey(b64) {
-  return crypto.subtle.importKey('raw', base64ToBytes(b64), { name: 'Ed25519' }, false, ['verify']);
+  return crypto.subtle.importKey('raw', base64ToBytes(b64), SIGN_ALGO, false, ['verify']);
 }
 
 /** Import a base64 (PKCS8) private key for signing (non-extractable). */
 export async function importPrivateKey(b64) {
-  return crypto.subtle.importKey('pkcs8', base64ToBytes(b64), { name: 'Ed25519' }, false, ['sign']);
+  return crypto.subtle.importKey('pkcs8', base64ToBytes(b64), SIGN_ALGO, false, ['sign']);
 }
 
 /**
- * Sign bytes with an Ed25519 private key.
- * @param {CryptoKey} privateKey - Ed25519 sign key
+ * Sign bytes with an ECDSA P-256 private key.
+ * @param {CryptoKey} privateKey - ECDSA sign key
  * @param {BufferSource} data - bytes to sign
- * @returns {Promise<Uint8Array>} 64-byte signature
+ * @returns {Promise<Uint8Array>} 64-byte (r||s) signature
  */
 export async function signData(privateKey, data) {
-  const sig = await crypto.subtle.sign({ name: 'Ed25519' }, privateKey, data);
+  const sig = await crypto.subtle.sign(SIGN_HASH, privateKey, data);
   return new Uint8Array(sig);
 }
 
 /**
- * Verify an Ed25519 signature. Never throws — returns false on any failure.
- * @param {CryptoKey} publicKey - Ed25519 verify key
+ * Verify an ECDSA P-256 signature. Never throws — returns false on any failure.
+ * @param {CryptoKey} publicKey - ECDSA verify key
  * @param {BufferSource} data - signed bytes
- * @param {BufferSource} signature - 64-byte signature
+ * @param {BufferSource} signature - 64-byte (r||s) signature
  * @returns {Promise<boolean>}
  */
 export async function verifyData(publicKey, data, signature) {
   try {
-    return await crypto.subtle.verify({ name: 'Ed25519' }, publicKey, signature, data);
+    return await crypto.subtle.verify(SIGN_HASH, publicKey, signature, data);
   } catch {
     return false;
   }
