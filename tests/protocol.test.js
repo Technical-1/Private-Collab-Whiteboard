@@ -3,6 +3,7 @@ import { generateSigningKeyPair } from '../js/crypto.js';
 import {
   MSG, encodeEnvelope, decodeEnvelope, signUpdate, verifyUpdate,
 } from '../js/protocol.js';
+import { encodeRotateNotice, decodeRotateNotice } from '../js/protocol.js';
 
 describe('protocol message types', () => {
   it('exposes stable numeric constants', () => {
@@ -38,5 +39,18 @@ describe('signUpdate / verifyUpdate', () => {
     const update = new Uint8Array([9, 8, 7]);
     const sig = await signUpdate(kp.privateKey, update, 2);
     expect(await verifyUpdate(kp.publicKey, update, 3, sig)).toBe(false);
+  });
+});
+
+describe('rotate notice', () => {
+  it('adds the ROTATE message type', () => {
+    expect(MSG.ROTATE).toBe(4);
+  });
+  it('round-trips a notice + signature', () => {
+    const notice = { type: 'rotate', room: 'R', from: 1, to: 2 };
+    const bytes = encodeRotateNotice(notice, 'SIGB64');
+    const out = decodeRotateNotice(bytes);
+    expect(out.notice).toEqual(notice);
+    expect(out.sig).toBe('SIGB64');
   });
 });
