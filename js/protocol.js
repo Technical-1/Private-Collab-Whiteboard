@@ -8,6 +8,7 @@ export const MSG = {
   SNAPSHOT: 1,
   SNAPSHOT_REQUEST: 2,
   AWARENESS: 3,
+  ROTATE: 4,
 };
 
 /**
@@ -57,4 +58,19 @@ export async function signUpdate(privateKey, update, epoch) {
 /** Verify a signed update for a given epoch. @returns {Promise<boolean>} */
 export async function verifyUpdate(publicKey, update, epoch, sig) {
   return verifyData(publicKey, signedBytes(update, epoch), sig);
+}
+
+/**
+ * Encode an owner-signed rotation notice for the wire.
+ * @param {{type:'rotate', room:string, from:number, to:number}} notice
+ * @param {string} sigB64 - owner signature over the notice (signStatement)
+ * @returns {Uint8Array}
+ */
+export function encodeRotateNotice(notice, sigB64) {
+  return new TextEncoder().encode(JSON.stringify({ notice, sig: sigB64 }));
+}
+
+/** @returns {{notice:object, sig:string}} */
+export function decodeRotateNotice(bytes) {
+  return JSON.parse(new TextDecoder().decode(bytes));
 }

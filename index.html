@@ -318,7 +318,9 @@
 
       if (password) {
         const cap = await mintRoomCapability(password);
-        window.location.href = `/room/${roomId}#${encodeCapabilityHash(cap, 'edit')}`;
+        // The creator is the room OWNER (can rotate/change password); invited
+        // collaborators get 'edit'/'view' links from the in-room Invite modal.
+        window.location.href = `/room/${roomId}#${encodeCapabilityHash(cap, 'owner')}`;
       } else {
         window.location.href = `/room/${roomId}`;
       }

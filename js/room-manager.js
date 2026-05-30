@@ -1,103 +1,104 @@
 import { generateRoomId } from './utils.js';
-import {
-  generateSigningKeyPair, exportPublicKey, exportPrivateKey,
-} from './crypto.js';
+import { generateSigningKeyPair, exportPublicKey, exportPrivateKey } from './crypto.js';
+import { mintCert } from './room-cert.js';
 
-/**
- * Encode an editor capability link payload (goes after '#').
- * Carries both private (sk, PKCS8 base64) and public (pk, raw base64) keys.
- */
-export function encodeEditorLink(password, privateKeyB64, publicKeyB64, epoch) {
-  const token = { v: 2, p: password, r: 'edit', e: epoch, sk: privateKeyB64, pk: publicKeyB64 };
-  return btoa(encodeURIComponent(JSON.stringify(token)));
+function encodeLink(obj) {
+  return btoa(encodeURIComponent(JSON.stringify(obj)));
 }
 
-/** Encode a viewer capability link payload (public key only). */
-export function encodeViewerLink(password, publicKeyB64, epoch) {
-  const token = { v: 2, p: password, r: 'view', e: epoch, pk: publicKeyB64 };
-  return btoa(encodeURIComponent(JSON.stringify(token)));
+/** Owner link: full authority (skO + skE + cert). */
+export function encodeOwnerLink(cap) {
+  return encodeLink({ v: 3, r: 'owner', e: cap.epoch, p: cap.password, pkO: cap.pkO, skO: cap.skO, pkE: cap.pkE, skE: cap.skE, cert: cap.cert });
+}
+/** Editor link: can edit, cannot rotate (no skO). */
+export function encodeEditorLink(cap) {
+  return encodeLink({ v: 3, r: 'edit', e: cap.epoch, p: cap.password, pkO: cap.pkO, pkE: cap.pkE, skE: cap.skE, cert: cap.cert });
+}
+/** Viewer link: read-only (no private keys). */
+export function encodeViewerLink(cap) {
+  return encodeLink({ v: 3, r: 'view', e: cap.epoch, p: cap.password, pkO: cap.pkO, pkE: cap.pkE, cert: cap.cert });
 }
 
 /**
- * Decode a capability token. Returns a normalized capability or null.
- * Hard break: only v:2 tokens are accepted. An 'edit' token without a private
- * key is downgraded to 'view' (no key => cannot sign).
- * @returns {{version:2, password:string, role:'edit'|'view', epoch:number,
- *            privateKeyB64:string|null, publicKeyB64:string}|null}
+ * Decode a v3 capability token. Hard break: only v:3 accepted. A claimed role
+ * without the matching key is downgraded (no key => can't act in that role).
  */
 export function decodeCapabilityToken(token) {
   try {
     const d = JSON.parse(decodeURIComponent(atob(token)));
-    if (d.v !== 2 || !d.p || !d.pk || typeof d.e !== 'number') return null;
-    const hasPriv = d.r === 'edit' && typeof d.sk === 'string' && d.sk.length > 0;
+    if (d.v !== 3 || !d.p || !d.pkO || !d.pkE || !d.cert || typeof d.e !== 'number') return null;
+    const hasOwner = d.r === 'owner' && typeof d.skO === 'string' && typeof d.skE === 'string';
+    const hasEditor = (d.r === 'owner' || d.r === 'edit') && typeof d.skE === 'string';
+    const role = hasOwner ? 'owner' : hasEditor ? 'edit' : 'view';
     return {
-      version: 2,
-      password: d.p,
-      role: hasPriv ? 'edit' : 'view',
-      epoch: d.e,
-      privateKeyB64: hasPriv ? d.sk : null,
-      publicKeyB64: d.pk,
+      version: 3, role, epoch: d.e, password: d.p, pkO: d.pkO, pkE: d.pkE,
+      skO: hasOwner ? d.skO : null,
+      skE: hasEditor ? d.skE : null,
+      cert: d.cert,
     };
   } catch {
     return null;
   }
 }
 
-/**
- * Mint a brand-new editor capability for a room: random password-independent
- * Ed25519 keypair at epoch 1.
- * @param {string} password
- * @returns {Promise<object>} capability
- */
+/** Mint a brand-new OWNER capability: owner root key + first editor key + cert_1. */
 export async function mintRoomCapability(password) {
-  const kp = await generateSigningKeyPair();
-  const publicKeyB64 = await exportPublicKey(kp.publicKey);
-  const privateKeyB64 = await exportPrivateKey(kp.privateKey);
-  return { version: 2, password, role: 'edit', epoch: 1, privateKeyB64, publicKeyB64 };
+  const owner = await generateSigningKeyPair();
+  const editor = await generateSigningKeyPair();
+  const pkO = await exportPublicKey(owner.publicKey);
+  const skO = await exportPrivateKey(owner.privateKey);
+  const pkE = await exportPublicKey(editor.publicKey);
+  const skE = await exportPrivateKey(editor.privateKey);
+  const cert = await mintCert(skO, pkO, 1, pkE);
+  return { version: 3, role: 'owner', epoch: 1, password, pkO, skO, pkE, skE, cert };
 }
 
-/** @returns {'edit'|'view'} */
-export function capabilityRole(cap) {
-  return cap && cap.role === 'edit' ? 'edit' : 'view';
-}
-
-/** Build the '#' hash payload for a capability (editor form if it has a private key). */
+/** Build the '#' hash for a capability at the requested role (owner downgrades to edit/view). */
 export function encodeCapabilityHash(cap, role = cap.role) {
-  if (role === 'edit' && cap.privateKeyB64) {
-    return encodeEditorLink(cap.password, cap.privateKeyB64, cap.publicKeyB64, cap.epoch);
-  }
-  return encodeViewerLink(cap.password, cap.publicKeyB64, cap.epoch);
+  if (role === 'owner' && cap.skO) return encodeOwnerLink(cap);
+  if (role === 'edit' && cap.skE) return encodeEditorLink(cap);
+  return encodeViewerLink(cap);
 }
 
-/**
- * Read the capability from the URL hash. Returns null for unencrypted rooms.
- */
+/** Rotate a room (owner only): same owner key, new epoch + editor key + password + cert. */
+export async function rotateCapability(ownerCap, newPassword) {
+  if (!ownerCap.skO) throw new Error('rotateCapability requires an owner capability');
+  const editor = await generateSigningKeyPair();
+  const pkE = await exportPublicKey(editor.publicKey);
+  const skE = await exportPrivateKey(editor.privateKey);
+  const epoch = ownerCap.epoch + 1;
+  const cert = await mintCert(ownerCap.skO, ownerCap.pkO, epoch, pkE);
+  return { ...ownerCap, role: 'owner', epoch, password: newPassword, pkE, skE, cert };
+}
+
+/** Read the capability from the URL hash (null for unencrypted rooms). */
 export function getCapabilityFromUrl() {
   const hash = window.location.hash;
-  if (hash && hash.length > 1) {
-    return decodeCapabilityToken(hash.substring(1));
-  }
+  if (hash && hash.length > 1) return decodeCapabilityToken(hash.substring(1));
   return null;
+}
+
+/** @returns {'owner'|'edit'|'view'} */
+export function capabilityRole(cap) {
+  return cap ? cap.role : 'edit'; // unencrypted/open rooms behave as editor
 }
 
 export async function createRoom(password = null) {
   const roomId = generateRoomId();
   if (password) {
     const cap = await mintRoomCapability(password);
-    window.location.href = `/room/${roomId}#${encodeCapabilityHash(cap, 'edit')}`;
+    window.location.href = `/room/${roomId}#${encodeCapabilityHash(cap, 'owner')}`;
   } else {
     window.location.href = `/room/${roomId}`;
   }
 }
 
-export async function joinRoom(roomId, password = null, role = 'edit') {
+export async function joinRoom(roomId, password = null) {
   if (!roomId || !roomId.trim()) return;
   const cleanRoomId = roomId.trim();
   if (password) {
-    // Joining an encrypted room normally requires the shared link. With only a
-    // password (e.g. the join form), mint a fresh editor room rather than fork.
     const cap = await mintRoomCapability(password);
-    window.location.href = `/room/${cleanRoomId}#${encodeCapabilityHash(cap, 'edit')}`;
+    window.location.href = `/room/${cleanRoomId}#${encodeCapabilityHash(cap, 'owner')}`;
   } else {
     window.location.href = `/room/${cleanRoomId}`;
   }
@@ -122,19 +123,13 @@ export function isEncryptedRoom() {
 
 export function isReadOnly() {
   const cap = getCapabilityFromUrl();
-  // Encrypted rooms: role from capability. Unencrypted rooms: always editable.
   return cap ? cap.role === 'view' : false;
 }
 
 /**
- * Get a shareable link at the requested permission level.
- *
- * For a capability (encrypted) room the link MUST carry the capability — the
- * password and keys live entirely in the URL hash. A link without it points the
- * recipient at a different, open (editable) room on the same id and corrupts the
- * original with decryption errors, so `includePassword` is intentionally ignored
- * here (kept in the signature for existing callers). Open rooms have no
- * capability, so they share the bare URL.
+ * Shareable link. NEVER shares the owner link; the quick copy gives 'edit', the
+ * invite modal gives 'edit'|'view'. (includePassword arg ignored — capability rooms
+ * always embed the capability or there's no usable link.)
  *
  * @param {boolean} _includePassword - deprecated/ignored (capability is always embedded)
  * @param {'edit'|'view'} permission - permission level for the minted link
@@ -142,8 +137,9 @@ export function isReadOnly() {
 export function getShareableLink(_includePassword = false, permission = 'edit') {
   const baseUrl = window.location.origin + window.location.pathname;
   const cap = getCapabilityFromUrl();
-  if (!cap) return baseUrl; // open room: nothing to embed
-  return `${baseUrl}#${encodeCapabilityHash(cap, permission)}`;
+  if (!cap) return baseUrl;
+  const role = permission === 'view' ? 'view' : 'edit';
+  return `${baseUrl}#${encodeCapabilityHash(cap, role)}`;
 }
 
 /**
