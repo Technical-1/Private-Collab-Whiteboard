@@ -2344,7 +2344,8 @@ canvas {
 .read-only-mode #clear-board,
 .read-only-mode .shape-control-btn,
 .read-only-mode .actions-section,
-.read-only-mode .share-section {
+.read-only-mode .share-section,
+.read-only-mode .color-section {
   display: none !important;
 }
 
