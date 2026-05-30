@@ -4,7 +4,7 @@ import { SyncProvider } from './sync-provider.js';
 import { SignedDocSync } from './signed-doc-sync.js';
 import { deriveKey, encrypt, decrypt, importPrivateKey, importPublicKey } from './crypto.js';
 import { PARTYKIT_HOST } from './config.js';
-import { mintRoomCapability, encodeCapabilityHash, getCapabilityFromUrl } from './room-manager.js';
+import { mintRoomCapability, encodeCapabilityHash, getCapabilityFromUrl, rotateCapability } from './room-manager.js';
 
 /**
  * Wait for a provider to emit a sync event
@@ -89,20 +89,28 @@ export async function initializeYjs(roomId, capability = null) {
   // password-free room behavior.
   let signedSync;
   if (capability) {
-    // First encrypted load: migrate any pre-encryption drawings from the
-    // unencrypted store so enabling encryption doesn't orphan them.
-    if (boards.size === 0) {
-      await migrateUnencryptedData(roomId, ydoc);
-    }
-    const publicKey = await importPublicKey(capability.publicKeyB64);
-    const privateKey = capability.privateKeyB64 ? await importPrivateKey(capability.privateKeyB64) : null;
-    const store = makeSnapshotStore(roomId, capability.epoch);
-    signedSync = new SignedDocSync(ydoc, provider, capability, privateKey, publicKey, store);
+    if (boards.size === 0) await migrateUnencryptedData(roomId, ydoc);
+    signedSync = new SignedDocSync(ydoc, provider, {
+      signed: true,
+      epoch: capability.epoch,
+      store: makeSnapshotStore(roomId, capability.epoch),
+      isEditor: capability.role === 'owner' || capability.role === 'edit',
+      isOwner: capability.role === 'owner',
+      editorSignKey: capability.skE ? await importPrivateKey(capability.skE) : null,
+      editorVerifyKey: await importPublicKey(capability.pkE),
+      editorPubB64: capability.pkE,
+      ownerVerifyKey: await importPublicKey(capability.pkO),
+      ownerSignKey: capability.skO ? await importPrivateKey(capability.skO) : null,
+      ownerPubB64: capability.pkO,
+      cert: capability.cert,
+    });
   } else {
-    // Open (passwordless) room: unsigned open collaboration, no view-only.
-    const store = makeSnapshotStore(roomId, 0);
-    signedSync = new SignedDocSync(ydoc, provider, { role: 'edit', epoch: 0 }, null, null, store);
+    signedSync = new SignedDocSync(ydoc, provider, {
+      signed: false, epoch: 0, store: makeSnapshotStore(roomId, 0), isEditor: true, isOwner: false,
+    });
   }
+  // Surface owner rotation to the app so it can prompt for a new link.
+  signedSync.onRotated = () => window.dispatchEvent(new CustomEvent('room-rotated'));
   await signedSync.start();
 
   // NOTE: we intentionally do NOT eagerly create the 'default' board here.
@@ -183,20 +191,16 @@ function makeSnapshotStore(roomId, epoch) {
 }
 
 /**
- * Rotate the room: new password + new Ed25519 keypair + bumped epoch.
- * Invalidates all old links. The reloaded editor emits a fresh snapshot at the
- * new epoch so new-link holders can bootstrap.
+ * Owner-only room rotation. Mints a new epoch (same owner key, new editor key +
+ * password + cert), broadcasts an owner-signed notice so current peers supersede,
+ * then reloads the owner into the new epoch link to re-share out-of-band.
  */
-export async function changePassword(roomId, newPassword) {
-  const baseUrl = `${window.location.origin}/room/${roomId}`;
-  if (newPassword) {
-    const current = getCapabilityFromUrl();
-    const nextEpoch = current ? current.epoch + 1 : 1;
-    const cap = await mintRoomCapability(newPassword);
-    cap.epoch = nextEpoch;
-    window.location.href = `${baseUrl}#${encodeCapabilityHash(cap, 'edit')}`;
-  } else {
-    window.location.href = baseUrl;
-  }
+export async function rotateRoom(roomId, newPassword, signedSync) {
+  const current = getCapabilityFromUrl();
+  if (!current || current.role !== 'owner') return; // only the owner can rotate
+  const next = await rotateCapability(current, newPassword);
+  if (signedSync) await signedSync.broadcastRotate(next.epoch); // tell current peers
+  await new Promise((r) => setTimeout(r, 250)); // let the notice flush over the socket
+  window.location.href = `${window.location.origin}/room/${roomId}#${encodeCapabilityHash(next, 'owner')}`;
   window.location.reload();
 }
