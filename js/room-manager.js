@@ -60,35 +60,45 @@ export function encodeCapabilityHash(cap, role = cap.role) {
   return encodeViewerLink(cap);
 }
 
-/**
- * Read the capability from the URL hash. Returns null for unencrypted rooms.
- */
+/** Rotate a room (owner only): same owner key, new epoch + editor key + password + cert. */
+export async function rotateCapability(ownerCap, newPassword) {
+  if (!ownerCap.skO) throw new Error('rotateCapability requires an owner capability');
+  const editor = await generateSigningKeyPair();
+  const pkE = await exportPublicKey(editor.publicKey);
+  const skE = await exportPrivateKey(editor.privateKey);
+  const epoch = ownerCap.epoch + 1;
+  const cert = await mintCert(ownerCap.skO, ownerCap.pkO, epoch, pkE);
+  return { ...ownerCap, role: 'owner', epoch, password: newPassword, pkE, skE, cert };
+}
+
+/** Read the capability from the URL hash (null for unencrypted rooms). */
 export function getCapabilityFromUrl() {
   const hash = window.location.hash;
-  if (hash && hash.length > 1) {
-    return decodeCapabilityToken(hash.substring(1));
-  }
+  if (hash && hash.length > 1) return decodeCapabilityToken(hash.substring(1));
   return null;
+}
+
+/** @returns {'owner'|'edit'|'view'} */
+export function capabilityRole(cap) {
+  return cap ? cap.role : 'edit'; // unencrypted/open rooms behave as editor
 }
 
 export async function createRoom(password = null) {
   const roomId = generateRoomId();
   if (password) {
     const cap = await mintRoomCapability(password);
-    window.location.href = `/room/${roomId}#${encodeCapabilityHash(cap, 'edit')}`;
+    window.location.href = `/room/${roomId}#${encodeCapabilityHash(cap, 'owner')}`;
   } else {
     window.location.href = `/room/${roomId}`;
   }
 }
 
-export async function joinRoom(roomId, password = null, role = 'edit') {
+export async function joinRoom(roomId, password = null) {
   if (!roomId || !roomId.trim()) return;
   const cleanRoomId = roomId.trim();
   if (password) {
-    // Joining an encrypted room normally requires the shared link. With only a
-    // password (e.g. the join form), mint a fresh editor room rather than fork.
     const cap = await mintRoomCapability(password);
-    window.location.href = `/room/${cleanRoomId}#${encodeCapabilityHash(cap, 'edit')}`;
+    window.location.href = `/room/${cleanRoomId}#${encodeCapabilityHash(cap, 'owner')}`;
   } else {
     window.location.href = `/room/${cleanRoomId}`;
   }
@@ -113,19 +123,13 @@ export function isEncryptedRoom() {
 
 export function isReadOnly() {
   const cap = getCapabilityFromUrl();
-  // Encrypted rooms: role from capability. Unencrypted rooms: always editable.
   return cap ? cap.role === 'view' : false;
 }
 
 /**
- * Get a shareable link at the requested permission level.
- *
- * For a capability (encrypted) room the link MUST carry the capability — the
- * password and keys live entirely in the URL hash. A link without it points the
- * recipient at a different, open (editable) room on the same id and corrupts the
- * original with decryption errors, so `includePassword` is intentionally ignored
- * here (kept in the signature for existing callers). Open rooms have no
- * capability, so they share the bare URL.
+ * Shareable link. NEVER shares the owner link; the quick copy gives 'edit', the
+ * invite modal gives 'edit'|'view'. (includePassword arg ignored — capability rooms
+ * always embed the capability or there's no usable link.)
  *
  * @param {boolean} _includePassword - deprecated/ignored (capability is always embedded)
  * @param {'edit'|'view'} permission - permission level for the minted link
@@ -133,8 +137,9 @@ export function isReadOnly() {
 export function getShareableLink(_includePassword = false, permission = 'edit') {
   const baseUrl = window.location.origin + window.location.pathname;
   const cap = getCapabilityFromUrl();
-  if (!cap) return baseUrl; // open room: nothing to embed
-  return `${baseUrl}#${encodeCapabilityHash(cap, permission)}`;
+  if (!cap) return baseUrl;
+  const role = permission === 'view' ? 'view' : 'edit';
+  return `${baseUrl}#${encodeCapabilityHash(cap, role)}`;
 }
 
 /**

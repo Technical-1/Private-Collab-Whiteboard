@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { mintRoomCapability, encodeCapabilityHash, decodeCapabilityToken } from '../js/room-manager.js';
+import { mintRoomCapability, encodeCapabilityHash, decodeCapabilityToken, rotateCapability } from '../js/room-manager.js';
 import { verifyCert } from '../js/room-cert.js';
+import { verifyCert as vcert } from '../js/room-cert.js';
 
 describe('v3 capability links', () => {
   it('mints an owner capability with both keys + a valid cert', async () => {
@@ -42,5 +43,19 @@ describe('v3 capability links', () => {
   it('rejects v1/v2/garbage (hard break)', () => {
     expect(decodeCapabilityToken('garbage')).toBeNull();
     expect(decodeCapabilityToken(btoa(encodeURIComponent(JSON.stringify({ v: 2, p: 'x', pk: 'y', e: 1 }))))).toBeNull();
+  });
+});
+
+describe('rotateCapability', () => {
+  it('keeps the owner key, bumps epoch, new editor key + password + cert', async () => {
+    const cap = await mintRoomCapability('pw');
+    const next = await rotateCapability(cap, 'pw2');
+    expect(next.role).toBe('owner');
+    expect(next.epoch).toBe(2);
+    expect(next.password).toBe('pw2');
+    expect(next.pkO).toBe(cap.pkO);     // SAME room identity
+    expect(next.skO).toBe(cap.skO);
+    expect(next.pkE).not.toBe(cap.pkE); // NEW editor key
+    expect(await vcert(next.pkO, next.cert)).toEqual({ epoch: 2, editorPub: next.pkE });
   });
 });
