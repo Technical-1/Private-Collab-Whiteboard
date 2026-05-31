@@ -40,7 +40,7 @@ import {
   ZOOM_WHEEL_STEP,
   FIT_PADDING
 } from './config.js';
-import { saveBoard, getBoard } from './board-history.js';
+import { saveBoard, getBoard, historyRoleFromCapability } from './board-history.js';
 
 let yjsInstance = null;
 let boardManager = null;
@@ -107,9 +107,10 @@ async function main() {
   // Set read-only mode in drawing module (enforces in JavaScript, not just CSS)
   setReadOnlyMode(readOnly);
 
-  // Save/update board in history
+  // Save/update board in history. Derive the role from the capability so owners
+  // are recorded as 'owner' (saveBoard still preserves a prior 'owner' on revisit).
   const existingBoard = getBoard(roomId);
-  const historyRole = readOnly ? 'viewer' : (existingBoard?.role || 'collaborator');
+  const historyRole = historyRoleFromCapability(role);
   saveBoard({
     roomId: roomId,
     roomName: existingBoard?.roomName || roomId,
