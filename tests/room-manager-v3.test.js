@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { mintRoomCapability, encodeCapabilityHash, decodeCapabilityToken, rotateCapability } from '../js/room-manager.js';
 import { verifyCert } from '../js/room-cert.js';
 import { verifyCert as vcert } from '../js/room-cert.js';
-import { PBKDF2_ITERATIONS, LEGACY_PBKDF2_ITERATIONS } from '../js/config.js';
+import { PBKDF2_ITERATIONS, LEGACY_PBKDF2_ITERATIONS, MAX_PBKDF2_ITERATIONS } from '../js/config.js';
 
 describe('v3 capability links', () => {
   it('mints an owner capability with both keys + a valid cert', async () => {
@@ -82,5 +82,23 @@ describe('capability KDF iteration count', () => {
     const cap = await mintRoomCapability('pw');
     const next = await rotateCapability(cap, 'pw2');
     expect(next.kdf).toBe(cap.kdf);
+  });
+
+  it('clamps a tampered low kdf up to the legacy floor', async () => {
+    const cap = await mintRoomCapability('pw');
+    const token = encodeCapabilityHash(cap, 'view');
+    const obj = JSON.parse(decodeURIComponent(atob(token)));
+    obj.kdf = 1; // attacker downgrades to 1 iteration
+    const tampered = btoa(encodeURIComponent(JSON.stringify(obj)));
+    expect(decodeCapabilityToken(tampered).kdf).toBe(LEGACY_PBKDF2_ITERATIONS);
+  });
+
+  it('clamps an absurdly high kdf down to the ceiling', async () => {
+    const cap = await mintRoomCapability('pw');
+    const token = encodeCapabilityHash(cap, 'view');
+    const obj = JSON.parse(decodeURIComponent(atob(token)));
+    obj.kdf = 999999999;
+    const tampered = btoa(encodeURIComponent(JSON.stringify(obj)));
+    expect(decodeCapabilityToken(tampered).kdf).toBe(MAX_PBKDF2_ITERATIONS);
   });
 });

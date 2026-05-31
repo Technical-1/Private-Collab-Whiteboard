@@ -1,7 +1,7 @@
 import { generateRoomId } from './utils.js';
 import { generateSigningKeyPair, exportPublicKey, exportPrivateKey } from './crypto.js';
 import { mintCert } from './room-cert.js';
-import { PBKDF2_ITERATIONS, LEGACY_PBKDF2_ITERATIONS } from './config.js';
+import { PBKDF2_ITERATIONS, LEGACY_PBKDF2_ITERATIONS, MAX_PBKDF2_ITERATIONS } from './config.js';
 
 function encodeLink(obj) {
   return btoa(encodeURIComponent(JSON.stringify(obj)));
@@ -33,9 +33,15 @@ export function decodeCapabilityToken(token) {
     const role = hasOwner ? 'owner' : hasEditor ? 'edit' : 'view';
     return {
       version: 3, role, epoch: d.e, password: d.p,
-      // Links minted before KDF hardening have no `kdf`; fall back to the legacy
-      // count so existing rooms still derive a matching key.
-      kdf: typeof d.kdf === 'number' ? d.kdf : LEGACY_PBKDF2_ITERATIONS,
+      // Clamp the attacker-supplied iteration count to [floor, ceiling]. A
+      // tampered link cannot downgrade key derivation below the legacy count.
+      kdf: Math.min(
+        Math.max(
+          Number.isInteger(d.kdf) ? d.kdf : LEGACY_PBKDF2_ITERATIONS,
+          LEGACY_PBKDF2_ITERATIONS
+        ),
+        MAX_PBKDF2_ITERATIONS
+      ),
       pkO: d.pkO, pkE: d.pkE,
       skO: hasOwner ? d.skO : null,
       skE: hasEditor ? d.skE : null,

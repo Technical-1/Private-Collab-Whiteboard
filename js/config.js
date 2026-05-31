@@ -27,6 +27,11 @@ export const PANEL_ANIMATION_DELAY = 350;
 // keep working.
 export const PBKDF2_ITERATIONS = 600000;
 export const LEGACY_PBKDF2_ITERATIONS = 100000;
+// Hard bounds applied to the attacker-supplied `kdf` field on decode. Floor =
+// legacy count (a tampered link can never derive a weaker key than the oldest
+// legitimate rooms). Ceiling prevents a malicious link from pinning a victim to
+// a multi-second key derivation.
+export const MAX_PBKDF2_ITERATIONS = 5000000;
 export const SALT_LENGTH = 16;
 export const IV_LENGTH = 12;
 
