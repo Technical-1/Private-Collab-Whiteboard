@@ -31,6 +31,30 @@ export function assignColor(userId) {
   return colors[Math.abs(hash) % colors.length];
 }
 
+// Strict hex-color allowlist. Colors arrive from untrusted peers (unsigned
+// awareness state, shared CRDT shapes) and get interpolated into innerHTML, so
+// anything that isn't a plain #hex color is an XSS risk. The app only ever
+// produces #rrggbb (palette + <input type=color>), so hex-only is safe; any
+// other value collapses to the fallback. Use this for ANY color that reaches
+// the DOM via string interpolation.
+const HEX_COLOR = /^#(?:[0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/;
+
+export function safeColor(value, fallback = '#000000') {
+  return typeof value === 'string' && HEX_COLOR.test(value) ? value : fallback;
+}
+
+// Coerce an untrusted numeric field to a finite number for safe interpolation
+// into HTML attributes. Note Number(null)/Number('') are 0 (finite), so reject
+// non-number, non-numeric-string inputs explicitly rather than trusting Number.
+export function safeNumber(value, fallback) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : fallback;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const n = Number(value);
+    if (Number.isFinite(n)) return n;
+  }
+  return fallback;
+}
+
 // Generate a room ID (16 hex chars)
 export function generateRoomId() {
   return Array.from(crypto.getRandomValues(new Uint8Array(8)))

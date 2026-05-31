@@ -157,6 +157,19 @@ export function formatRelativeTime(isoDate) {
 }
 
 /**
+ * Map a capability role ('owner' | 'edit' | 'view') to the role label used in
+ * board history ('owner' | 'collaborator' | 'viewer'). Owners must map to
+ * 'owner' so getRoleInfo()'s crown badge is reachable.
+ * @param {string} capabilityRole
+ * @returns {'owner'|'collaborator'|'viewer'}
+ */
+export function historyRoleFromCapability(capabilityRole) {
+  if (capabilityRole === 'owner') return 'owner';
+  if (capabilityRole === 'view') return 'viewer';
+  return 'collaborator';
+}
+
+/**
  * Get role display info
  * @param {string} role - Role string
  * @returns {Object} Display info with label and color

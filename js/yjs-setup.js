@@ -5,6 +5,7 @@ import { SignedDocSync } from './signed-doc-sync.js';
 import { deriveKey, encrypt, decrypt, importPrivateKey, importPublicKey } from './crypto.js';
 import { PARTYKIT_HOST } from './config.js';
 import { mintRoomCapability, encodeCapabilityHash, getCapabilityFromUrl, rotateCapability } from './room-manager.js';
+import { makeSnapshotStore } from './snapshot-store.js';
 
 /**
  * Wait for a provider to emit a sync event
@@ -68,7 +69,8 @@ export async function initializeYjs(roomId, capability = null) {
 
   let encryptionKey = null, encryptFn = null, decryptFn = null;
   if (password) {
-    encryptionKey = await deriveKey(password, roomId);
+    // Use the iteration count carried in the capability so all peers agree.
+    encryptionKey = await deriveKey(password, roomId, capability.kdf);
     encryptFn = encrypt; decryptFn = decrypt;
   }
 
@@ -166,28 +168,6 @@ function dispatchConnectionStatus(connected, synced, decryptionFailed) {
   window.dispatchEvent(new CustomEvent('yjs-status', {
     detail: { connected, synced, decryptionFailed }
   }));
-}
-
-/**
- * Minimal persisted store for the latest signed snapshot, keyed by room+epoch.
- * Uses localStorage (snapshots are bounded; this is only a relay cache — the
- * primary doc store remains in IndexedDB via y-indexeddb).
- */
-function makeSnapshotStore(roomId, epoch) {
-  const key = `wb-snap-${roomId}-e${epoch}`;
-  return {
-    async load() {
-      const b64 = localStorage.getItem(key);
-      if (!b64) return null;
-      const bin = atob(b64); const out = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-      return out;
-    },
-    async save(bytes) {
-      let bin = ''; for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
-      try { localStorage.setItem(key, btoa(bin)); } catch { /* quota - ignore */ }
-    },
-  };
 }
 
 /**

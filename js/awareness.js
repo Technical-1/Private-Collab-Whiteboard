@@ -1,4 +1,4 @@
-import { generateUserId, assignColor } from './utils.js';
+import { generateUserId, assignColor, safeColor } from './utils.js';
 import { getViewport } from './drawing.js';
 import { CURSOR_UPDATE_INTERVAL } from './config.js';
 
@@ -236,9 +236,11 @@ function renderUsers(awareness) {
     userEl.className = 'user-item';
 
     const isLocal = user.id === localUserId;
+    // Untrusted: sanitize the peer-supplied color before it hits innerHTML.
+    const color = safeColor(user.color);
 
     userEl.innerHTML = `
-      <span class="user-color" style="background-color: ${user.color}"></span>
+      <span class="user-color" style="background-color: ${color}"></span>
       <span class="user-name">${escapeHtml(user.name)}${isLocal ? ' (you)' : ''}</span>
     `;
     usersContainer.appendChild(userEl);
@@ -283,19 +285,21 @@ function renderCursors(awareness) {
 
     // Transform cursor from world coords to screen coords
     const screenPos = worldToScreen(user.cursor.x, user.cursor.y);
+    // Untrusted: sanitize the peer-supplied color before it hits innerHTML.
+    const color = safeColor(user.color);
 
     // Create cursor element
     const cursorEl = document.createElement('div');
     cursorEl.className = 'remote-cursor';
     cursorEl.style.left = `${screenPos.x}px`;
     cursorEl.style.top = `${screenPos.y}px`;
-    cursorEl.style.setProperty('--cursor-color', user.color);
+    cursorEl.style.setProperty('--cursor-color', color);
 
     cursorEl.innerHTML = `
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="${user.color}">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="${color}">
         <path d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87c.48 0 .72-.58.38-.92L5.94 2.35a.5.5 0 0 0-.44.86z"/>
       </svg>
-      <span class="cursor-label" style="background-color: ${user.color}">${escapeHtml(user.name)}</span>
+      <span class="cursor-label" style="background-color: ${color}">${escapeHtml(user.name)}</span>
     `;
 
     cursorsContainer.appendChild(cursorEl);

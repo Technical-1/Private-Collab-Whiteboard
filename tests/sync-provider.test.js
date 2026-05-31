@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import * as Y from 'yjs';
 import { SyncProvider } from '../js/sync-provider.js';
 import { MSG } from '../js/protocol.js';
@@ -10,6 +10,41 @@ class FakeWS {
   close() {}
   send() {}
 }
+
+// Counts how many sockets get opened, and fires onclose when closed, so we can
+// assert reconnect behavior.
+class CountingWS {
+  constructor() {
+    CountingWS.count++;
+    this.readyState = 0; this.binaryType = '';
+    this.onopen = this.onmessage = this.onclose = this.onerror = null;
+  }
+  close() { this.readyState = 3; if (this.onclose) this.onclose(); }
+  send() {}
+}
+CountingWS.count = 0;
+
+describe('SyncProvider lifecycle', () => {
+  let prevWS;
+  beforeEach(() => { prevWS = globalThis.WebSocket; globalThis.WebSocket = CountingWS; CountingWS.count = 0; });
+  afterEach(() => { globalThis.WebSocket = prevWS; vi.useRealTimers(); });
+
+  it('connect() is a no-op after destroy()', () => {
+    const provider = new SyncProvider('localhost:9999', 'room', new Y.Doc(), {});
+    expect(CountingWS.count).toBe(1); // initial connect in constructor
+    provider.destroy();
+    provider.connect(); // a stray reconnect attempt must do nothing
+    expect(CountingWS.count).toBe(1);
+  });
+
+  it('does not reconnect when the socket close event fires after destroy()', () => {
+    vi.useFakeTimers();
+    const provider = new SyncProvider('localhost:9999', 'room', new Y.Doc(), {});
+    provider.destroy(); // closes the socket -> onclose must NOT schedule a reconnect
+    vi.advanceTimersByTime(5000);
+    expect(CountingWS.count).toBe(1);
+  });
+});
 
 describe('SyncProvider receive wiring (integration contract)', () => {
   let prevWS;

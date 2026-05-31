@@ -40,6 +40,7 @@ export class SyncProvider {
     this.ws = null;
     this.wsUnsuccessfulReconnects = 0;
     this.maxBackoffTime = 2500;
+    this._destroyed = false; // once destroyed, never reconnect
 
     // Callbacks. onMessage/onConnect are PUBLIC settable properties: the signing
     // layer (SignedDocSync) assigns them after construction, so they must not be
@@ -86,7 +87,7 @@ export class SyncProvider {
   }
 
   connect() {
-    if (this.wsconnecting || this.wsconnected) return;
+    if (this._destroyed || this.wsconnecting || this.wsconnected) return;
 
     this.wsconnecting = true;
     this._onStatus({ status: 'connecting' });
@@ -119,6 +120,7 @@ export class SyncProvider {
   }
 
   destroy() {
+    this._destroyed = true; // before disconnect(): stop the close handler reconnecting
     this.disconnect();
 
     if (typeof window !== 'undefined' && this._beforeUnloadHandler) {
@@ -203,6 +205,8 @@ export class SyncProvider {
   _onClose() {
     this.wsconnected = false;
     this.wsconnecting = false;
+
+    if (this._destroyed) return; // destroyed: don't report status or reconnect
 
     this._onStatus({ status: 'disconnected' });
 
