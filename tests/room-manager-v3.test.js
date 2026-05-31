@@ -102,3 +102,29 @@ describe('capability KDF iteration count', () => {
     expect(decodeCapabilityToken(tampered).kdf).toBe(MAX_PBKDF2_ITERATIONS);
   });
 });
+
+describe('capability per-room salt', () => {
+  it('mints a random salt and round-trips it through every link role', async () => {
+    const cap = await mintRoomCapability('pw');
+    expect(typeof cap.salt).toBe('string');
+    expect(cap.salt.length).toBeGreaterThan(0);
+    for (const role of ['owner', 'edit', 'view']) {
+      const dec = decodeCapabilityToken(encodeCapabilityHash(cap, role));
+      expect(dec.salt).toBe(cap.salt);
+    }
+  });
+
+  it('preserves the salt across rotation (same room identity)', async () => {
+    const cap = await mintRoomCapability('pw');
+    const next = await rotateCapability(cap, 'pw2');
+    expect(next.salt).toBe(cap.salt);
+  });
+
+  it('decodes a legacy token (no salt field) to salt = null', async () => {
+    const cap = await mintRoomCapability('pw');
+    const obj = JSON.parse(decodeURIComponent(atob(encodeCapabilityHash(cap, 'view'))));
+    delete obj.salt;
+    const legacy = btoa(encodeURIComponent(JSON.stringify(obj)));
+    expect(decodeCapabilityToken(legacy).salt).toBeNull();
+  });
+});
