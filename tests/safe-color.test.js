@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { safeColor, safeNumber } from '../js/utils.js';
+import { safeColor, safeNumber, safeToolName } from '../js/utils.js';
 
 // safeColor is the XSS boundary for color values that get interpolated into
 // innerHTML (user presence colors in awareness.js, shape colors in the
@@ -80,5 +80,25 @@ describe('safeNumber', () => {
     expect(safeNumber(null, 2)).toBe(2);
     expect(safeNumber(undefined, 2)).toBe(2);
     expect(safeNumber({}, 2)).toBe(2);
+  });
+});
+
+describe('safeToolName', () => {
+  it('passes through every known drawing tool unchanged', () => {
+    for (const t of ['line', 'rect', 'circle', 'text', 'freehand', 'eraser']) {
+      expect(safeToolName(t)).toBe(t);
+    }
+  });
+
+  it('collapses an HTML-injection payload to the safe literal "shape"', () => {
+    expect(safeToolName('<img src=x onerror=alert(1)>')).toBe('shape');
+    expect(safeToolName('<style>body{}</style>')).toBe('shape');
+  });
+
+  it('collapses non-strings and unknown values to "shape"', () => {
+    expect(safeToolName(null)).toBe('shape');
+    expect(safeToolName(undefined)).toBe('shape');
+    expect(safeToolName(42)).toBe('shape');
+    expect(safeToolName('bogus')).toBe('shape');
   });
 });

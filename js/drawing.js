@@ -1,5 +1,5 @@
 import * as Y from 'yjs';
-import { generateId, safeColor, safeNumber } from './utils.js';
+import { generateId, safeColor, safeNumber, safeToolName } from './utils.js';
 import {
   updateCursorPosition,
   clearCursorPosition,
@@ -1133,10 +1133,12 @@ function showShapeSettingsPopup(shape, bounds) {
   const hasFill = shape.tool === 'rect' || shape.tool === 'circle';
   const isText = shape.tool === 'text';
 
-  // Dynamic header based on shape type
-  const headerText = isText ? 'Text Settings' :
-    shape.tool === 'freehand' ? 'Freehand Settings' :
-    shape.tool.charAt(0).toUpperCase() + shape.tool.slice(1) + ' Settings';
+  // Dynamic header based on shape type. shape.tool is peer-controlled and lands
+  // in popup.innerHTML below, so allowlist it before building the label.
+  const safeTool = safeToolName(shape.tool);
+  const headerText = safeTool === 'text' ? 'Text Settings' :
+    safeTool === 'freehand' ? 'Freehand Settings' :
+    safeTool.charAt(0).toUpperCase() + safeTool.slice(1) + ' Settings';
 
   let html = `<div class="popup-header">${headerText}</div>`;
 

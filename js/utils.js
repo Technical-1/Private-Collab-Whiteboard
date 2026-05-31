@@ -55,6 +55,16 @@ export function safeNumber(value, fallback) {
   return fallback;
 }
 
+// Allowlist of tool names the app actually produces. shape.tool arrives from
+// untrusted peers via the shared CRDT and is interpolated into innerHTML when
+// building the shape-settings popup header, so any value outside this set
+// collapses to the inert literal 'shape'. Mirrors safeColor/safeNumber.
+const KNOWN_TOOLS = ['line', 'rect', 'circle', 'text', 'freehand', 'eraser'];
+
+export function safeToolName(value) {
+  return typeof value === 'string' && KNOWN_TOOLS.includes(value) ? value : 'shape';
+}
+
 // Generate a room ID (16 hex chars)
 export function generateRoomId() {
   return Array.from(crypto.getRandomValues(new Uint8Array(8)))
