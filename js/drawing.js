@@ -1,5 +1,6 @@
 import * as Y from 'yjs';
 import { generateId, safeColor, safeNumber, safeToolName } from './utils.js';
+import { sanitizeShape } from './shape-schema.js';
 import {
   updateCursorPosition,
   clearCursorPosition,
@@ -1128,6 +1129,10 @@ function showShapeSettingsPopup(shape, bounds) {
     popupInteracting = false;
   });
 
+  // Normalize the untrusted CRDT shape once; all DOM-bound fields below are now
+  // safe. (Replaces the scattered safeColor/safeNumber/safeToolName calls.)
+  shape = sanitizeShape(shape) || shape;
+
   // Determine which controls to show based on shape type
   const hasStroke = shape.tool !== 'text';
   const hasFill = shape.tool === 'rect' || shape.tool === 'circle';
@@ -1142,14 +1147,10 @@ function showShapeSettingsPopup(shape, bounds) {
 
   let html = `<div class="popup-header">${headerText}</div>`;
 
-  // Shape fields are authored by remote peers via the shared CRDT doc, so
-  // sanitize anything interpolated into this innerHTML: colors to strict hex,
-  // numbers to finite values. (fontFamily below is matched with === so it is
-  // not injectable.)
-  const strokeColor = safeColor(shape.color);
-  const strokeWidth = safeNumber(shape.strokeWidth, 2);
-  const fillColor = safeColor(shape.fillColor, '#ffffff');
-  const fontSize = safeNumber(shape.fontSize, 20);
+  const strokeColor = shape.color;
+  const strokeWidth = shape.strokeWidth;
+  const fillColor = shape.fillColor || '#ffffff';
+  const fontSize = shape.fontSize;
 
   // Stroke color (for all except text uses fill)
   html += `

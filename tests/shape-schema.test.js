@@ -1,0 +1,31 @@
+import { describe, it, expect } from 'vitest';
+import { sanitizeShape } from '../js/shape-schema.js';
+
+describe('sanitizeShape', () => {
+  it('returns null for non-objects', () => {
+    expect(sanitizeShape(null)).toBeNull();
+    expect(sanitizeShape('x')).toBeNull();
+  });
+
+  it('neutralizes an injected tool and clamps numeric/color fields', () => {
+    const dirty = {
+      tool: '<img src=x onerror=alert(1)>',
+      color: 'javascript:alert(1)',
+      strokeWidth: 'NaN',
+      fontSize: {},
+      x: 10, y: 20,
+    };
+    const clean = sanitizeShape(dirty);
+    expect(clean.tool).toBe('shape');
+    expect(clean.color).toBe('#000000');     // safeColor fallback
+    expect(clean.strokeWidth).toBe(2);       // safeNumber fallback
+    expect(clean.fontSize).toBe(20);         // safeNumber fallback
+    expect(clean.x).toBe(10);                // untouched geometry preserved
+  });
+
+  it('passes a well-formed shape through with values intact', () => {
+    const ok = { tool: 'rect', color: '#ff0000', strokeWidth: 5, fontSize: 16 };
+    const clean = sanitizeShape(ok);
+    expect(clean).toMatchObject({ tool: 'rect', color: '#ff0000', strokeWidth: 5, fontSize: 16 });
+  });
+});
