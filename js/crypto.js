@@ -21,7 +21,7 @@ import { PBKDF2_ITERATIONS, IV_LENGTH } from './config.js';
  * @param {string} roomId - Room ID (used as salt to make keys room-specific)
  * @returns {Promise<CryptoKey>} - AES-GCM key for encrypt/decrypt
  */
-export async function deriveKey(password, roomId) {
+export async function deriveKey(password, roomId, iterations = PBKDF2_ITERATIONS) {
   const encoder = new TextEncoder();
 
   // Import password as raw key material
@@ -33,13 +33,14 @@ export async function deriveKey(password, roomId) {
     ['deriveBits', 'deriveKey']
   );
 
-  // Derive AES key using PBKDF2
+  // Derive AES key using PBKDF2. The iteration count is supplied by the caller
+  // (carried in the capability link) so all peers in a room agree on it.
   // Salt = room ID ensures same password in different rooms = different keys
   return crypto.subtle.deriveKey(
     {
       name: 'PBKDF2',
       salt: encoder.encode(`whiteboard-${roomId}`),
-      iterations: PBKDF2_ITERATIONS,
+      iterations,
       hash: 'SHA-256'
     },
     keyMaterial,
@@ -109,9 +110,9 @@ export async function decrypt(data, key) {
  * @param {string} roomId - Room ID
  * @returns {Promise<boolean>} - True if password is correct
  */
-export async function verifyPassword(encryptedTestData, password, roomId) {
+export async function verifyPassword(encryptedTestData, password, roomId, iterations = PBKDF2_ITERATIONS) {
   try {
-    const key = await deriveKey(password, roomId);
+    const key = await deriveKey(password, roomId, iterations);
     await decrypt(encryptedTestData, key);
     return true;
   } catch {

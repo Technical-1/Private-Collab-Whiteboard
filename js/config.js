@@ -20,7 +20,13 @@ export const UNDO_CAPTURE_TIMEOUT = 500;
 export const PANEL_ANIMATION_DELAY = 350;
 
 // Cryptography configuration
-export const PBKDF2_ITERATIONS = 100000;
+// PBKDF2_ITERATIONS is the count used to MINT new rooms (OWASP guidance for
+// PBKDF2-HMAC-SHA256). The actual count is carried in each capability link's
+// `kdf` field so all peers derive the same key; links minted before this
+// hardening (no `kdf`) fall back to LEGACY_PBKDF2_ITERATIONS so existing rooms
+// keep working.
+export const PBKDF2_ITERATIONS = 600000;
+export const LEGACY_PBKDF2_ITERATIONS = 100000;
 export const SALT_LENGTH = 16;
 export const IV_LENGTH = 12;
 

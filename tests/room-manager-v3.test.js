@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { mintRoomCapability, encodeCapabilityHash, decodeCapabilityToken, rotateCapability } from '../js/room-manager.js';
 import { verifyCert } from '../js/room-cert.js';
 import { verifyCert as vcert } from '../js/room-cert.js';
+import { PBKDF2_ITERATIONS, LEGACY_PBKDF2_ITERATIONS } from '../js/config.js';
 
 describe('v3 capability links', () => {
   it('mints an owner capability with both keys + a valid cert', async () => {
@@ -57,5 +58,29 @@ describe('rotateCapability', () => {
     expect(next.skO).toBe(cap.skO);
     expect(next.pkE).not.toBe(cap.pkE); // NEW editor key
     expect(await vcert(next.pkO, next.cert)).toEqual({ epoch: 2, editorPub: next.pkE });
+  });
+});
+
+describe('capability KDF iteration count', () => {
+  it('mints with the hardened iteration count and round-trips it through a link', async () => {
+    const cap = await mintRoomCapability('pw');
+    expect(cap.kdf).toBe(PBKDF2_ITERATIONS);
+    const dec = decodeCapabilityToken(encodeCapabilityHash(cap, 'owner'));
+    expect(dec.kdf).toBe(PBKDF2_ITERATIONS);
+  });
+
+  it('defaults a legacy token (no kdf field) to the legacy iteration count', async () => {
+    const cap = await mintRoomCapability('pw');
+    const token = encodeCapabilityHash(cap, 'view');
+    const obj = JSON.parse(decodeURIComponent(atob(token)));
+    delete obj.kdf; // simulate a link minted before the hardening
+    const legacyToken = btoa(encodeURIComponent(JSON.stringify(obj)));
+    expect(decodeCapabilityToken(legacyToken).kdf).toBe(LEGACY_PBKDF2_ITERATIONS);
+  });
+
+  it('carries the iteration count across rotation', async () => {
+    const cap = await mintRoomCapability('pw');
+    const next = await rotateCapability(cap, 'pw2');
+    expect(next.kdf).toBe(cap.kdf);
   });
 });

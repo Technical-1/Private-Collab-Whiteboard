@@ -1,6 +1,7 @@
 import { generateRoomId } from './utils.js';
 import { generateSigningKeyPair, exportPublicKey, exportPrivateKey } from './crypto.js';
 import { mintCert } from './room-cert.js';
+import { PBKDF2_ITERATIONS, LEGACY_PBKDF2_ITERATIONS } from './config.js';
 
 function encodeLink(obj) {
   return btoa(encodeURIComponent(JSON.stringify(obj)));
@@ -8,15 +9,15 @@ function encodeLink(obj) {
 
 /** Owner link: full authority (skO + skE + cert). */
 export function encodeOwnerLink(cap) {
-  return encodeLink({ v: 3, r: 'owner', e: cap.epoch, p: cap.password, pkO: cap.pkO, skO: cap.skO, pkE: cap.pkE, skE: cap.skE, cert: cap.cert });
+  return encodeLink({ v: 3, r: 'owner', e: cap.epoch, p: cap.password, kdf: cap.kdf, pkO: cap.pkO, skO: cap.skO, pkE: cap.pkE, skE: cap.skE, cert: cap.cert });
 }
 /** Editor link: can edit, cannot rotate (no skO). */
 export function encodeEditorLink(cap) {
-  return encodeLink({ v: 3, r: 'edit', e: cap.epoch, p: cap.password, pkO: cap.pkO, pkE: cap.pkE, skE: cap.skE, cert: cap.cert });
+  return encodeLink({ v: 3, r: 'edit', e: cap.epoch, p: cap.password, kdf: cap.kdf, pkO: cap.pkO, pkE: cap.pkE, skE: cap.skE, cert: cap.cert });
 }
 /** Viewer link: read-only (no private keys). */
 export function encodeViewerLink(cap) {
-  return encodeLink({ v: 3, r: 'view', e: cap.epoch, p: cap.password, pkO: cap.pkO, pkE: cap.pkE, cert: cap.cert });
+  return encodeLink({ v: 3, r: 'view', e: cap.epoch, p: cap.password, kdf: cap.kdf, pkO: cap.pkO, pkE: cap.pkE, cert: cap.cert });
 }
 
 /**
@@ -31,7 +32,11 @@ export function decodeCapabilityToken(token) {
     const hasEditor = (d.r === 'owner' || d.r === 'edit') && typeof d.skE === 'string';
     const role = hasOwner ? 'owner' : hasEditor ? 'edit' : 'view';
     return {
-      version: 3, role, epoch: d.e, password: d.p, pkO: d.pkO, pkE: d.pkE,
+      version: 3, role, epoch: d.e, password: d.p,
+      // Links minted before KDF hardening have no `kdf`; fall back to the legacy
+      // count so existing rooms still derive a matching key.
+      kdf: typeof d.kdf === 'number' ? d.kdf : LEGACY_PBKDF2_ITERATIONS,
+      pkO: d.pkO, pkE: d.pkE,
       skO: hasOwner ? d.skO : null,
       skE: hasEditor ? d.skE : null,
       cert: d.cert,
@@ -50,7 +55,7 @@ export async function mintRoomCapability(password) {
   const pkE = await exportPublicKey(editor.publicKey);
   const skE = await exportPrivateKey(editor.privateKey);
   const cert = await mintCert(skO, pkO, 1, pkE);
-  return { version: 3, role: 'owner', epoch: 1, password, pkO, skO, pkE, skE, cert };
+  return { version: 3, role: 'owner', epoch: 1, password, kdf: PBKDF2_ITERATIONS, pkO, skO, pkE, skE, cert };
 }
 
 /** Build the '#' hash for a capability at the requested role (owner downgrades to edit/view). */
