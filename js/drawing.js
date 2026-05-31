@@ -1,5 +1,5 @@
 import * as Y from 'yjs';
-import { generateId } from './utils.js';
+import { generateId, safeColor, safeNumber } from './utils.js';
 import {
   updateCursorPosition,
   clearCursorPosition,
@@ -1140,11 +1140,20 @@ function showShapeSettingsPopup(shape, bounds) {
 
   let html = `<div class="popup-header">${headerText}</div>`;
 
+  // Shape fields are authored by remote peers via the shared CRDT doc, so
+  // sanitize anything interpolated into this innerHTML: colors to strict hex,
+  // numbers to finite values. (fontFamily below is matched with === so it is
+  // not injectable.)
+  const strokeColor = safeColor(shape.color);
+  const strokeWidth = safeNumber(shape.strokeWidth, 2);
+  const fillColor = safeColor(shape.fillColor, '#ffffff');
+  const fontSize = safeNumber(shape.fontSize, 20);
+
   // Stroke color (for all except text uses fill)
   html += `
     <div class="popup-row">
       <label>${isText ? 'Color' : 'Stroke Color'}</label>
-      <input type="color" id="shape-color" value="${shape.color || '#000000'}">
+      <input type="color" id="shape-color" value="${strokeColor}">
     </div>
   `;
 
@@ -1153,8 +1162,8 @@ function showShapeSettingsPopup(shape, bounds) {
     html += `
       <div class="popup-row">
         <label>Thickness</label>
-        <input type="range" id="shape-stroke-width" min="1" max="20" value="${shape.strokeWidth || 2}">
-        <span id="shape-stroke-value">${shape.strokeWidth || 2}px</span>
+        <input type="range" id="shape-stroke-width" min="1" max="20" value="${strokeWidth}">
+        <span id="shape-stroke-value">${strokeWidth}px</span>
       </div>
     `;
   }
@@ -1165,7 +1174,7 @@ function showShapeSettingsPopup(shape, bounds) {
       <div class="popup-row">
         <label>Fill</label>
         <input type="checkbox" id="shape-fill-enabled" ${shape.fillColor ? 'checked' : ''}>
-        <input type="color" id="shape-fill-color" value="${shape.fillColor || '#ffffff'}" ${shape.fillColor ? '' : 'disabled'}>
+        <input type="color" id="shape-fill-color" value="${fillColor}" ${shape.fillColor ? '' : 'disabled'}>
       </div>
     `;
   }
@@ -1175,8 +1184,8 @@ function showShapeSettingsPopup(shape, bounds) {
     html += `
       <div class="popup-row">
         <label>Font Size</label>
-        <input type="range" id="shape-font-size" min="12" max="72" value="${shape.fontSize || 20}">
-        <span id="shape-font-size-value">${shape.fontSize || 20}px</span>
+        <input type="range" id="shape-font-size" min="12" max="72" value="${fontSize}">
+        <span id="shape-font-size-value">${fontSize}px</span>
       </div>
       <div class="popup-row">
         <label>Font</label>
