@@ -71,3 +71,16 @@ export function generateRoomId() {
     .map(b => b.toString(16).padStart(2, '0'))
     .join('');
 }
+
+// Single source of truth for HTML escaping. Escapes the five characters that
+// matter in both text and attribute contexts (modal.js and awareness.js had
+// their own copies; boards-home.js had one MISSING the quotes — that drift is
+// why this lives here now). Coerces non-strings so callers can pass anything.
+export function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}

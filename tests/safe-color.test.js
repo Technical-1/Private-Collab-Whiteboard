@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { safeColor, safeNumber, safeToolName } from '../js/utils.js';
+import { safeColor, safeNumber, safeToolName, escapeHtml } from '../js/utils.js';
 
 // safeColor is the XSS boundary for color values that get interpolated into
 // innerHTML (user presence colors in awareness.js, shape colors in the
@@ -100,5 +100,21 @@ describe('safeToolName', () => {
     expect(safeToolName(undefined)).toBe('shape');
     expect(safeToolName(42)).toBe('shape');
     expect(safeToolName('bogus')).toBe('shape');
+  });
+});
+
+describe('escapeHtml (shared, attribute-safe)', () => {
+  it('escapes angle brackets, ampersand, and BOTH quote styles', () => {
+    expect(escapeHtml('<a>&"\'')).toBe('&lt;a&gt;&amp;&quot;&#39;');
+  });
+
+  it('coerces non-strings without throwing', () => {
+    expect(escapeHtml(123)).toBe('123');
+    expect(escapeHtml(null)).toBe('null');
+  });
+
+  it('prevents attribute breakout', () => {
+    // value used as data-room-id="<here>" must not be able to close the attribute
+    expect(escapeHtml('x" onmouseover="alert(1)')).not.toContain('"');
   });
 });

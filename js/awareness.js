@@ -1,4 +1,4 @@
-import { generateUserId, assignColor, safeColor } from './utils.js';
+import { generateUserId, assignColor, safeColor, escapeHtml } from './utils.js';
 import { getViewport } from './drawing.js';
 import { CURSOR_UPDATE_INTERVAL } from './config.js';
 
@@ -306,10 +306,3 @@ function renderCursors(awareness) {
   });
 }
 
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  // Escape quotes too (textContent->innerHTML leaves them) so the result is
-  // safe in both element-text and quoted-attribute contexts.
-  return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
