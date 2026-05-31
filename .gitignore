@@ -8,3 +8,4 @@ dist/
 .partykit/
 .claude/
 .vercel
+.project-hub-tasks.json
