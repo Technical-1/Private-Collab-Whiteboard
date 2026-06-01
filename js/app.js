@@ -6,7 +6,7 @@ import {
   changeUserColor,
   getLocalUserColor
 } from './awareness.js';
-import { setupDrawing, subscribeToBoard, getTexts, getCanvas, screenToWorld, getViewport, panBy, setZoom, setReadOnlyMode, cleanup as cleanupDrawing, deleteSelectedShapes, copySelectedShapes, pasteShapes, duplicateSelectedShapes } from './drawing.js';
+import { setupDrawing, subscribeToBoard, getTexts, getCanvas, screenToWorld, getViewport, panBy, setZoom, setReadOnlyMode, cleanup as cleanupDrawing, deleteSelectedShapes, copySelectedShapes, pasteShapes, duplicateSelectedShapes, getFitBounds } from './drawing.js';
 import { setupBoardManager, setBoardsContainer } from './boards.js';
 import {
   getRoomIdFromUrl,
@@ -1071,74 +1071,9 @@ function getAllShapesBounds() {
 }
 
 function getShapeBoundsForFit(shape) {
-  switch (shape.tool) {
-    case 'line':
-      return {
-        x: Math.min(shape.startX, shape.x),
-        y: Math.min(shape.startY, shape.y),
-        width: Math.abs(shape.x - shape.startX) || 1,
-        height: Math.abs(shape.y - shape.startY) || 1
-      };
-    case 'rect':
-      return {
-        x: shape.width >= 0 ? shape.startX : shape.startX + shape.width,
-        y: shape.height >= 0 ? shape.startY : shape.startY + shape.height,
-        width: Math.abs(shape.width) || 1,
-        height: Math.abs(shape.height) || 1
-      };
-    case 'circle':
-      return {
-        x: shape.startX - shape.radius,
-        y: shape.startY - shape.radius,
-        width: shape.radius * 2 || 1,
-        height: shape.radius * 2 || 1
-      };
-    case 'text':
-      return {
-        x: shape.x,
-        y: shape.y - (shape.fontSize || 20),
-        width: 100,
-        height: shape.fontSize || 20
-      };
-    case 'highlight':
-    case 'freehand':
-    case 'eraser':
-      if (!shape.points || shape.points.length === 0) return null;
-      let fMinX = Infinity, fMinY = Infinity, fMaxX = -Infinity, fMaxY = -Infinity;
-      shape.points.forEach(p => {
-        fMinX = Math.min(fMinX, p.x);
-        fMinY = Math.min(fMinY, p.y);
-        fMaxX = Math.max(fMaxX, p.x);
-        fMaxY = Math.max(fMaxY, p.y);
-      });
-      return {
-        x: fMinX,
-        y: fMinY,
-        width: (fMaxX - fMinX) || 1,
-        height: (fMaxY - fMinY) || 1
-      };
-    case 'arrow':
-      return {
-        x: Math.min(shape.startX, shape.x),
-        y: Math.min(shape.startY, shape.y),
-        width: Math.abs(shape.x - shape.startX) || 1,
-        height: Math.abs(shape.y - shape.startY) || 1
-      };
-    case 'diamond':
-    case 'triangle':
-    case 'ellipse':
-    case 'sticky':
-      return {
-        x: shape.width >= 0 ? shape.startX : shape.startX + shape.width,
-        y: shape.height >= 0 ? shape.startY : shape.startY + shape.height,
-        width: Math.abs(shape.width) || 1,
-        height: Math.abs(shape.height) || 1
-      };
-    case 'connector':
-      return null;
-    default:
-      return null;
-  }
+  // Single source of truth lives in drawing.js getFitBounds (which reuses
+  // getShapeBounds), so a new tool is covered automatically.
+  return getFitBounds(shape);
 }
 
 // ============ Browser Compatibility ============

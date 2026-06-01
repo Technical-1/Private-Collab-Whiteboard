@@ -2317,6 +2317,21 @@ export function getShapeBounds(shape) {
   }
 }
 
+// Bounds for the "Fit All" zoom. Delegates to getShapeBounds (the single source
+// of per-tool bbox) and applies fit-specific rules: connectors add no extent
+// beyond their already-included endpoints; an empty points-shape has no extent;
+// every other shape gets a min dimension of 1 so a zero-size shape can't collapse
+// the fit math. Returns null for shapes that should be skipped.
+export function getFitBounds(shape) {
+  if (shape.tool === 'connector') return null;
+  if ((shape.tool === 'freehand' || shape.tool === 'highlight' || shape.tool === 'eraser')
+      && (!shape.points || shape.points.length === 0)) {
+    return null;
+  }
+  const b = getShapeBounds(shape);
+  return { x: b.x, y: b.y, width: b.width || 1, height: b.height || 1 };
+}
+
 // ============ Drawing Functions ============
 
 function addDrawing(data) {
