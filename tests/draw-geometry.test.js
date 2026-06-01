@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { arrowHeadPoints, polygonPoints, pointInPolygon } from '../js/draw-geometry.js';
+import { arrowHeadPoints, polygonPoints, pointInPolygon, dashPattern } from '../js/draw-geometry.js';
 
 describe('arrowHeadPoints', () => {
   it('returns two barb points behind the tip for a rightward arrow', () => {
@@ -38,4 +38,14 @@ describe('pointInPolygon', () => {
   const square = [{x:0,y:0},{x:10,y:0},{x:10,y:10},{x:0,y:10}];
   it('true for an interior point', () => expect(pointInPolygon(5, 5, square)).toBe(true));
   it('false for an exterior point', () => expect(pointInPolygon(20, 5, square)).toBe(false));
+});
+
+describe('dashPattern', () => {
+  it('solid → empty array', () => expect(dashPattern('solid')).toEqual([]));
+  it('dashed → long dashes', () => expect(dashPattern('dashed')).toEqual([8, 6]));
+  it('dotted → short dots', () => expect(dashPattern('dotted')).toEqual([2, 6]));
+  it('unknown/undefined → solid', () => {
+    expect(dashPattern(undefined)).toEqual([]);
+    expect(dashPattern('zigzag')).toEqual([]);
+  });
 });
