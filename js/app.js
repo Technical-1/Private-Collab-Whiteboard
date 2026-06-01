@@ -654,8 +654,9 @@ function updateOptionsVisibility(toolName) {
     fillOption.style.display = hasFill ? 'flex' : 'none';
   }
 
-  // Show/hide stroke options (hide for select and eraser-shape)
-  const hasStroke = !['select', 'eraser-shape'].includes(toolName);
+  // Show/hide stroke options (hide for select, eraser-shape, and the laser
+  // pointer — the laser uses a fixed width, so stroke controls are meaningless).
+  const hasStroke = !['select', 'eraser-shape', 'laser'].includes(toolName);
   const strokeOption = document.querySelector('.stroke-option');
   if (strokeOption) {
     strokeOption.style.display = hasStroke ? 'flex' : 'none';
