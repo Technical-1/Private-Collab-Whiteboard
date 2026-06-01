@@ -28,6 +28,16 @@ describe('nearestAnchors', () => {
     const b = { x: 0, y: 0, width: 10, height: 10 };
     expect(nearestAnchors(a, b)).toEqual({ from: 'w', to: 'e' });
   });
+  it('B above A -> A.n / B.s', () => {
+    const a = { x: 0, y: 100, width: 10, height: 10 };
+    const b = { x: 0, y: 0, width: 10, height: 10 };
+    expect(nearestAnchors(a, b)).toEqual({ from: 'n', to: 's' });
+  });
+  it('exact diagonal tie favors horizontal (e/w)', () => {
+    const a = { x: 0, y: 0, width: 10, height: 10 };
+    const b = { x: 50, y: 50, width: 10, height: 10 }; // |dx| === |dy|
+    expect(nearestAnchors(a, b)).toEqual({ from: 'e', to: 'w' });
+  });
 });
 
 describe('isDangling', () => {
@@ -38,5 +48,9 @@ describe('isDangling', () => {
   it('true when either endpoint is missing', () => {
     expect(isDangling({ fromId: 'a', toId: 'x' }, ids)).toBe(true);
     expect(isDangling({ fromId: 'x', toId: 'b' }, ids)).toBe(true);
+  });
+  it('true when an endpoint key is absent entirely', () => {
+    expect(isDangling({ toId: 'b' }, ids)).toBe(true);      // no fromId
+    expect(isDangling({ fromId: 'a' }, ids)).toBe(true);    // no toId
   });
 });
