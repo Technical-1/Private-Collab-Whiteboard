@@ -209,7 +209,11 @@ async function main() {
     'draw-freehand': 'freehand',
     'draw-text': 'text',
     'eraser-shape': 'eraser-shape',
-    'eraser-brush': 'eraser-brush'
+    'eraser-brush': 'eraser-brush',
+    'draw-arrow': 'arrow',
+    'draw-diamond': 'diamond',
+    'draw-triangle': 'triangle',
+    'draw-ellipse': 'ellipse',
   };
 
   Object.entries(toolButtons).forEach(([btnId, toolName]) => {
@@ -669,7 +673,11 @@ function setActiveTool(tool) {
     'freehand': 'draw-freehand',
     'text': 'draw-text',
     'eraser-shape': 'eraser-shape',
-    'eraser-brush': 'eraser-brush'
+    'eraser-brush': 'eraser-brush',
+    'arrow': 'draw-arrow',
+    'diamond': 'draw-diamond',
+    'triangle': 'draw-triangle',
+    'ellipse': 'draw-ellipse',
   };
 
   const btnId = toolToButtonId[tool];
@@ -760,7 +768,11 @@ function setupKeyboardShortcuts() {
         'r': 'rect',
         'c': 'circle',
         't': 'text',
-        'e': 'eraser-shape'
+        'e': 'eraser-shape',
+        'a': 'arrow',
+        'd': 'diamond',
+        'y': 'triangle',
+        'o': 'ellipse',
       };
 
       const tool = toolShortcuts[e.key.toLowerCase()];
