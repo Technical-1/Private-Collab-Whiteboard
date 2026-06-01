@@ -32,6 +32,7 @@ export function initializeAwareness(awareness, userName, awarenessChangeCallback
       currentBoard: 'default',
       cursor: null, // Will be updated on mouse move
       currentDrawing: null, // In-progress drawing for live preview
+      laser: null, // Ephemeral laser-pointer trail (awareness-only, never persisted)
       enc: encrypted
     }
   });
@@ -307,5 +308,35 @@ function renderCursors(awareness) {
 
     cursorsContainer.appendChild(cursorEl);
   });
+}
+
+// Update the current laser trail (ephemeral — awareness only, never a CRDT shape)
+export function updateLaser(points) {
+  if (!localAwareness) return;
+  const state = localAwareness.getLocalState();
+  if (!state) return;
+  localAwareness.setLocalState({ ...state, user: { ...state.user, laser: points } });
+}
+
+// Clear the local laser trail (when the pointer is lifted or tool switched)
+export function clearLaser() {
+  if (!localAwareness) return;
+  const state = localAwareness.getLocalState();
+  if (!state) return;
+  localAwareness.setLocalState({ ...state, user: { ...state.user, laser: null } });
+}
+
+// Get all remote users' current laser trails (for rendering on the canvas)
+export function getRemoteLasers() {
+  if (!localAwareness) return [];
+  const out = [];
+  localAwareness.getStates().forEach((state, clientId) => {
+    if (clientId === localAwareness.clientID) return;
+    const user = state?.user;
+    if (user?.laser && user.laser.length) {
+      out.push({ id: user.id, color: user.color, points: user.laser });
+    }
+  });
+  return out;
 }
 
