@@ -1165,7 +1165,7 @@ function showShapeSettingsPopup(shape, bounds) {
 
   // Determine which controls to show based on shape type
   const hasStroke = shape.tool !== 'text';
-  const hasFill = shape.tool === 'rect' || shape.tool === 'circle';
+  const hasFill = ['rect', 'circle', 'diamond', 'triangle', 'ellipse'].includes(shape.tool);
   const isText = shape.tool === 'text';
 
   // Dynamic header based on shape type. shape.tool is peer-controlled and lands
@@ -2002,10 +2002,8 @@ function hitTestShape(x, y, shape, threshold = 8) {
     case 'diamond':
     case 'triangle': {
       const b = getShapeBounds(shape);
-      if (shape.fillColor) {
-        return x >= b.x - sw && x <= b.x + b.width + sw &&
-               y >= b.y - sw && y <= b.y + b.height + sw;
-      }
+      // pointInPolygon covers the filled (interior) case too; bbox would wrongly
+      // hit the corners of a diamond/triangle that lie outside the shape.
       return pointInPolygon(x, y, polygonPoints(shape.tool, b));
     }
 
@@ -2013,9 +2011,10 @@ function hitTestShape(x, y, shape, threshold = 8) {
       const b = getShapeBounds(shape);
       const rx = b.width / 2 || 1, ry = b.height / 2 || 1;
       const nx = (x - (b.x + rx)) / rx, ny = (y - (b.y + ry)) / ry;
-      const d = nx * nx + ny * ny;
-      if (shape.fillColor) return d <= 1.15;
-      return Math.abs(d - 1) < 0.3;
+      const dist = Math.hypot(nx, ny);            // 1.0 == on the outline
+      const tol = sw / Math.min(rx, ry);          // stroke tolerance, normalized
+      if (shape.fillColor) return dist <= 1 + tol;
+      return Math.abs(dist - 1) < tol;
     }
 
     default:
@@ -2290,6 +2289,16 @@ function drawRemoteDrawings() {
       drawRect(drawing.startX, drawing.startY, drawing.width, drawing.height, drawing.color, drawing.fillColor);
     } else if (drawing.tool === 'circle') {
       drawCircle(drawing.startX, drawing.startY, drawing.radius, drawing.color, drawing.fillColor);
+    } else if (drawing.tool === 'arrow') {
+      drawArrow(drawing.startX, drawing.startY, drawing.x, drawing.y, drawing.color, drawing.strokeWidth || 2, drawing.strokeStyle, drawing.arrowHeads);
+    } else if (drawing.tool === 'diamond' || drawing.tool === 'triangle') {
+      const bx = Math.min(drawing.startX, drawing.startX + drawing.width);
+      const by = Math.min(drawing.startY, drawing.startY + drawing.height);
+      drawPolygon(drawing.tool, bx, by, Math.abs(drawing.width), Math.abs(drawing.height), drawing.color, drawing.strokeWidth || 2, drawing.strokeStyle, drawing.fillColor);
+    } else if (drawing.tool === 'ellipse') {
+      const bx = Math.min(drawing.startX, drawing.startX + drawing.width);
+      const by = Math.min(drawing.startY, drawing.startY + drawing.height);
+      drawEllipseShape(bx, by, Math.abs(drawing.width), Math.abs(drawing.height), drawing.color, drawing.strokeWidth || 2, drawing.strokeStyle, drawing.fillColor);
     } else if (drawing.tool === 'text' && drawing.text) {
       drawText(drawing.x, drawing.y, drawing.text, drawing.color, drawing.fontSize, drawing.fontFamily);
     }
@@ -2505,10 +2514,15 @@ function drawArrow(startX, startY, x, y, color, sw, strokeStyle, arrowHeads) {
   ctx.lineWidth = sw || 2;
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
+  // Shaft honors the stroke style
   ctx.setLineDash(dashPattern(strokeStyle).map(d => d / viewport.zoom));
   ctx.beginPath();
   ctx.moveTo(startX, startY);
   ctx.lineTo(x, y);
+  ctx.stroke();
+  // Arrowheads are always solid
+  ctx.setLineDash([]);
+  ctx.beginPath();
   for (const p of arrowHeadPoints(startX, startY, x, y, headLen)) {
     ctx.moveTo(x, y); ctx.lineTo(p.x, p.y);
   }
@@ -2518,7 +2532,6 @@ function drawArrow(startX, startY, x, y, color, sw, strokeStyle, arrowHeads) {
     }
   }
   ctx.stroke();
-  ctx.setLineDash([]);
 }
 
 // x,y,width,height is a normalized bbox (non-negative w/h).

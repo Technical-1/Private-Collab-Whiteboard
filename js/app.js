@@ -57,7 +57,11 @@ const toolSettings = {
   circle: { strokeWidth: 2, fillEnabled: false, fillColor: '#ffffff' },
   freehand: { strokeWidth: 2 },
   text: { fontSize: 20, fontFamily: 'Arial' },
-  'eraser-brush': { strokeWidth: 4 }
+  'eraser-brush': { strokeWidth: 4 },
+  arrow: { strokeWidth: 2 },
+  diamond: { strokeWidth: 2, fillEnabled: false, fillColor: '#ffffff' },
+  triangle: { strokeWidth: 2, fillEnabled: false, fillColor: '#ffffff' },
+  ellipse: { strokeWidth: 2, fillEnabled: false, fillColor: '#ffffff' }
 };
 
 let currentToolName = 'select';
@@ -1064,6 +1068,22 @@ function getShapeBoundsForFit(shape) {
         y: fMinY,
         width: (fMaxX - fMinX) || 1,
         height: (fMaxY - fMinY) || 1
+      };
+    case 'arrow':
+      return {
+        x: Math.min(shape.startX, shape.x),
+        y: Math.min(shape.startY, shape.y),
+        width: Math.abs(shape.x - shape.startX) || 1,
+        height: Math.abs(shape.y - shape.startY) || 1
+      };
+    case 'diamond':
+    case 'triangle':
+    case 'ellipse':
+      return {
+        x: shape.width >= 0 ? shape.startX : shape.startX + shape.width,
+        y: shape.height >= 0 ? shape.startY : shape.startY + shape.height,
+        width: Math.abs(shape.width) || 1,
+        height: Math.abs(shape.height) || 1
       };
     default:
       return null;
