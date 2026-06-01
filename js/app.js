@@ -218,6 +218,7 @@ async function main() {
     'draw-diamond': 'diamond',
     'draw-triangle': 'triangle',
     'draw-ellipse': 'ellipse',
+    'tool-laser': 'laser',
   };
 
   Object.entries(toolButtons).forEach(([btnId, toolName]) => {
@@ -691,6 +692,7 @@ function setActiveTool(tool) {
     'diamond': 'draw-diamond',
     'triangle': 'draw-triangle',
     'ellipse': 'draw-ellipse',
+    'laser': 'tool-laser',
   };
 
   const btnId = toolToButtonId[tool];
@@ -786,6 +788,7 @@ function setupKeyboardShortcuts() {
         'd': 'diamond',
         'y': 'triangle',
         'o': 'ellipse',
+        'q': 'laser',
       };
 
       const tool = toolShortcuts[e.key.toLowerCase()];

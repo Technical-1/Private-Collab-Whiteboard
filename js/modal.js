@@ -440,6 +440,7 @@ export function showKeyboardShortcuts() {
       { key: 'O', desc: 'Ellipse tool' },
       { key: 'T', desc: 'Text tool' },
       { key: 'E', desc: 'Eraser (shape)' },
+      { key: 'Q', desc: 'Laser pointer' },
     ]},
     { category: 'Actions', items: [
       { key: 'Ctrl+Z', desc: 'Undo', mac: '⌘Z' },

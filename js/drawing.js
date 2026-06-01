@@ -8,8 +8,13 @@ import {
   refreshCursors,
   updateCurrentDrawing,
   clearCurrentDrawing,
-  getRemoteDrawings
+  getRemoteDrawings,
+  updateLaser,
+  clearLaser,
+  getRemoteLasers,
+  getLocalUserColor
 } from './awareness.js';
+import { pruneTrail, MAX_TRAIL_AGE_MS } from './laser-trail.js';
 import { showAlert } from './modal.js';
 import { ZOOM_MIN, ZOOM_MAX, HIT_TEST_THRESHOLD } from './config.js';
 
@@ -103,6 +108,8 @@ let drawing = false;
 let startX = 0;
 let startY = 0;
 let currentTool = 'select';
+let laserTrail = [];        // ephemeral world-coord points {x,y,t}; never persisted
+let laserAnimating = false; // guards the fade animation rAF loop
 let currentStrokeStyle = 'solid';   // 'solid' | 'dashed' | 'dotted' (global setting)
 let currentArrowHeads = 'end';      // 'end' | 'both'
 let currentBoardObserver = null;
@@ -363,6 +370,8 @@ export function setupDrawing(canvasEl, boardsMap, awarenessInstance, getBoardFn)
 
   return {
     setTool: (tool) => {
+      laserTrail = [];
+      clearLaser();
       currentTool = tool;
       clearSelection();
       updateCanvasCursor();
@@ -603,6 +612,16 @@ function handleMouseMove(e) {
   // Update cursor position for other users to see (use world coords for cross-viewport consistency)
   updateCursorPosition(x, y);
 
+  // Laser pointer: ephemeral trail broadcast via awareness, never persisted.
+  if (currentTool === 'laser') {
+    const now = Date.now();
+    laserTrail.push({ x, y, t: now });
+    laserTrail = pruneTrail(laserTrail, now);
+    updateLaser(laserTrail);
+    redrawCanvas();
+    return;
+  }
+
   // Handle dragging
   if (isDragging && selectedIds.size > 0) {
     // Draw preview of dragged shapes
@@ -711,6 +730,7 @@ function handleMouseMove(e) {
 }
 
 function handleMouseLeave() {
+  if (laserTrail.length) { laserTrail = []; clearLaser(); }
   clearCursorPosition();
   // Only clear hover, keep selection and its controls
   if (selectedIds.size === 0) {
@@ -2253,6 +2273,9 @@ function redrawCanvas() {
   // Draw remote users' in-progress drawings (live preview)
   drawRemoteDrawings();
 
+  // Draw laser pointers (local + remote, ephemeral, awareness-only)
+  drawLasers();
+
   // Draw local text being created (live preview)
   drawLocalTextPreview();
 
@@ -2316,6 +2339,62 @@ function drawRemoteDrawings() {
 
     ctx.restore();
   });
+}
+
+// Render local + remote laser pointers as a fading trail + glow dot. Ephemeral:
+// prunes the LOCAL trail by age here too, so it expires (and peers are notified
+// via clearLaser) even when the mouse stops moving. Self-schedules repaint while
+// any trail is alive so the fade animates without further input.
+function drawLasers() {
+  const now = Date.now();
+
+  // Expire the local trail even without mouse movement; notify peers when it dies.
+  if (laserTrail.length) {
+    laserTrail = pruneTrail(laserTrail, now);
+    if (laserTrail.length === 0) clearLaser();
+  }
+
+  const lasers = getRemoteLasers().map(l => ({ color: l.color, points: pruneTrail(l.points, now) }));
+  if (laserTrail.length) lasers.push({ color: getLocalUserColor(), points: laserTrail });
+
+  let anyActive = false;
+  for (const l of lasers) {
+    const pts = l.points;
+    if (!pts.length) continue;
+    anyActive = true;
+    const color = l.color || '#ff2d55';
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    // Fading trail
+    for (let i = 1; i < pts.length; i++) {
+      const age = (now - pts[i].t) / MAX_TRAIL_AGE_MS;
+      ctx.globalAlpha = Math.max(0, 1 - age) * 0.6;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 4 / viewport.zoom;
+      ctx.beginPath();
+      ctx.moveTo(pts[i - 1].x, pts[i - 1].y);
+      ctx.lineTo(pts[i].x, pts[i].y);
+      ctx.stroke();
+    }
+    // Glowing head dot
+    const head = pts[pts.length - 1];
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = color;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 12 / viewport.zoom;
+    ctx.beginPath();
+    ctx.arc(head.x, head.y, 5 / viewport.zoom, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  if (anyActive) {
+    if (!laserAnimating) {
+      laserAnimating = true;
+      requestAnimationFrame(() => { laserAnimating = false; redrawCanvas(); });
+    }
+  }
 }
 
 // Draw local text being created or edited (live preview for the creator)
