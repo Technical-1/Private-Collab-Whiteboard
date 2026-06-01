@@ -43,3 +43,15 @@ describe('sanitizeShape — Phase 1 fields', () => {
     expect(clean.strokeStyle).toBe('dashed');
   });
 });
+
+describe('sanitizeShape — sticky', () => {
+  it('preserves text and fillColor and the tool; keeps text verbatim (rendered to canvas, not HTML)', () => {
+    const clean = sanitizeShape({
+      tool: 'sticky', text: 'hello <not html>', fillColor: '#fff8b8',
+      startX: 0, startY: 0, width: 180, height: 180, fontSize: 16,
+    });
+    expect(clean.tool).toBe('sticky');
+    expect(clean.text).toBe('hello <not html>');
+    expect(clean.fillColor).toBe('#fff8b8');
+  });
+});

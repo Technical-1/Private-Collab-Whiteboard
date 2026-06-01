@@ -2,6 +2,7 @@ import * as Y from 'yjs';
 import { generateId, safeColor, safeNumber, safeToolName } from './utils.js';
 import { sanitizeShape } from './shape-schema.js';
 import { arrowHeadPoints, polygonPoints, pointInPolygon, dashPattern } from './draw-geometry.js';
+import { wrapText } from './text-wrap.js';
 import {
   updateCursorPosition,
   clearCursorPosition,
@@ -111,6 +112,7 @@ let currentTool = 'select';
 let laserTrail = [];        // ephemeral world-coord points {x,y,t}; never persisted
 let laserAnimating = false; // guards the fade animation rAF loop
 let currentStrokeStyle = 'solid';   // 'solid' | 'dashed' | 'dotted' (global setting)
+let currentStickyColor = '#fff8b8';
 let currentArrowHeads = 'end';      // 'end' | 'both'
 let currentBoardObserver = null;
 // The exact Y.Array instance we're currently observing. The boards Y.Map can
@@ -382,6 +384,7 @@ export function setupDrawing(canvasEl, boardsMap, awarenessInstance, getBoardFn)
     subscribeToBoard,
     setStrokeWidth: (width) => { strokeWidth = width; },
     setStrokeStyle: (style) => { currentStrokeStyle = style; },
+    setStickyColor: (c) => { currentStickyColor = c; },
     setFillEnabled: (enabled) => { fillEnabled = enabled; },
     setFillColor: (color) => { fillColor = color; },
     setFontSize: (size) => { fontSize = size; },
@@ -472,6 +475,20 @@ function handleMouseDown(e) {
   if (currentTool === 'text') {
     if (!canMutate()) return; // Block in read-only mode
     startTextCreation(startX, startY);
+    return;
+  }
+
+  // Handle sticky note - click to place a default-size note centered on the cursor
+  if (currentTool === 'sticky') {
+    if (!canMutate()) return; // Block in read-only mode
+    const size = 180;
+    addDrawing({
+      tool: 'sticky',
+      startX: startX - size / 2,
+      startY: startY - size / 2,
+      width: size, height: size,
+      text: '', fillColor: currentStickyColor, fontSize: 16,
+    });
     return;
   }
 
@@ -750,7 +767,7 @@ function handleDoubleClick(e) {
   const world = screenToWorld(screenX, screenY);
 
   const shape = findShapeAtPoint(world.x, world.y);
-  if (shape && shape.tool === 'text') {
+  if (shape && (shape.tool === 'text' || shape.tool === 'sticky')) {
     startTextEditing(shape);
   }
 }
@@ -1189,9 +1206,10 @@ function showShapeSettingsPopup(shape, bounds) {
   // safe. (Replaces the scattered safeColor/safeNumber/safeToolName calls.)
   shape = sanitizeShape(shape) || shape;
 
-  // Determine which controls to show based on shape type
-  const hasStroke = shape.tool !== 'text';
-  const hasFill = ['rect', 'circle', 'diamond', 'triangle', 'ellipse'].includes(shape.tool);
+  // Determine which controls to show based on shape type. Sticky notes have no
+  // stroke (drawSticky never strokes) — only their fill (note color) is editable.
+  const hasStroke = shape.tool !== 'text' && shape.tool !== 'sticky';
+  const hasFill = ['rect', 'circle', 'diamond', 'triangle', 'ellipse', 'sticky'].includes(shape.tool);
   const isText = shape.tool === 'text';
 
   // Dynamic header based on shape type. shape.tool is peer-controlled and lands
@@ -1208,13 +1226,16 @@ function showShapeSettingsPopup(shape, bounds) {
   const fillColor = shape.fillColor || '#ffffff';
   const fontSize = shape.fontSize;
 
-  // Stroke color (for all except text uses fill)
-  html += `
-    <div class="popup-row">
-      <label>${isText ? 'Color' : 'Stroke Color'}</label>
-      <input type="color" id="shape-color" value="${strokeColor}">
-    </div>
-  `;
+  // Stroke/text color. Sticky notes have no stroke (drawSticky ignores `color`) —
+  // their color is the note fill, edited via the Fill control below, so skip this row.
+  if (shape.tool !== 'sticky') {
+    html += `
+      <div class="popup-row">
+        <label>${isText ? 'Color' : 'Stroke Color'}</label>
+        <input type="color" id="shape-color" value="${strokeColor}">
+      </div>
+    `;
+  }
 
   // Stroke width (for shapes with strokes)
   if (hasStroke && !isText) {
@@ -1644,7 +1665,10 @@ function startTextEditing(shape) {
   broadcastEditingText(shape.id);
 
   // Convert world coordinates to screen coordinates for input positioning
-  const screenPos = worldToScreen(shape.x, shape.y);
+  // Sticky notes anchor on their top-left (startX/startY); text shapes use x/y.
+  const anchorX = shape.tool === 'sticky' ? shape.startX : shape.x;
+  const anchorY = shape.tool === 'sticky' ? shape.startY : shape.y;
+  const screenPos = worldToScreen(anchorX, anchorY);
   const scaledFontSize = (shape.fontSize || 20) * viewport.zoom;
 
   // Clamp position to keep input within container bounds
@@ -1666,7 +1690,8 @@ function startTextEditing(shape) {
   textInput.style.fontSize = `${scaledFontSize}px`;
   textInput.style.fontFamily = shape.fontFamily || 'Arial';
   textInput.style.maxWidth = `${containerRect.width - margin * 2}px`;
-  textInput.style.transform = 'translateY(-100%)'; // Position above the text baseline
+  // Text sits above its baseline; a sticky's anchor is its top edge, so place the input there.
+  textInput.style.transform = shape.tool === 'sticky' ? 'none' : 'translateY(-100%)';
 
   // Redraw on input to show live preview
   textInput.addEventListener('input', () => {
@@ -1725,20 +1750,25 @@ function updateTextInputPosition() {
   const shape = findShapeById(editingTextId);
   if (!shape) return;
 
-  const screenPos = worldToScreen(shape.x, shape.y);
+  const anchorX = shape.tool === 'sticky' ? shape.startX : shape.x;
+  const anchorY = shape.tool === 'sticky' ? shape.startY : shape.y;
+  const screenPos = worldToScreen(anchorX, anchorY);
   const scaledFontSize = (shape.fontSize || 20) * viewport.zoom;
 
   textInput.style.left = `${screenPos.x}px`;
   textInput.style.top = `${screenPos.y}px`;
   textInput.style.fontSize = `${scaledFontSize}px`;
-  textInput.style.transform = 'translateY(-100%)';
+  textInput.style.transform = shape.tool === 'sticky' ? 'none' : 'translateY(-100%)';
 }
 
 function finishTextEditing() {
   if (!editingTextId || !textInput) return;
 
+  const editingShape = findShapeById(editingTextId);
   const newText = textInput.value;
-  if (newText && newText.trim()) {
+  // A blank text shape would be invisible noise, so we keep the old text for the
+  // text tool; but a sticky stays visible when emptied, so allow clearing it.
+  if (editingShape?.tool === 'sticky' || (newText && newText.trim())) {
     updateShapeProperty(editingTextId, 'text', newText);
   }
 
@@ -1785,7 +1815,7 @@ function moveShape(shapeId, dx, dy) {
     updated.startY += dy;
     updated.x += dx;
     updated.y += dy;
-  } else if (shape.tool === 'diamond' || shape.tool === 'triangle' || shape.tool === 'ellipse') {
+  } else if (shape.tool === 'diamond' || shape.tool === 'triangle' || shape.tool === 'ellipse' || shape.tool === 'sticky') {
     updated.startX += dx;
     updated.startY += dy;
   }
@@ -2044,6 +2074,11 @@ function hitTestShape(x, y, shape, threshold = 8) {
       return Math.abs(dist - 1) < tol;
     }
 
+    case 'sticky': {
+      const b = getShapeBounds(shape);
+      return x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + b.height;
+    }
+
     default:
       return false;
   }
@@ -2151,11 +2186,12 @@ export function getShapeBounds(shape) {
         height: Math.abs(shape.y - shape.startY)
       };
 
-    // diamond/triangle/ellipse are all bbox-based (startX,startY,width,height) —
+    // diamond/triangle/ellipse/sticky are all bbox-based (startX,startY,width,height) —
     // note ellipse is intentionally NOT center+radius like 'circle'.
     case 'diamond':
     case 'triangle':
     case 'ellipse':
+    case 'sticky':
       return {
         x: Math.min(shape.startX, shape.startX + shape.width),
         y: Math.min(shape.startY, shape.startY + shape.height),
@@ -2258,8 +2294,9 @@ function redrawCanvas() {
   let hasOverlay = false;
 
   board.forEach((item) => {
-    // Skip if this is the shape being edited
-    if (editingTextId === item.id && item.tool === 'text') return;
+    // Skip the committed shape being edited (its live state is drawn in
+    // drawLocalTextPreview). Applies to both text and sticky notes.
+    if (editingTextId === item.id && (item.tool === 'text' || item.tool === 'sticky')) return;
 
     drawShape(item);
 
@@ -2408,6 +2445,18 @@ function drawLocalTextPreview() {
   if (!textInput) return;
 
   const text = textInput.value;
+
+  // Editing a sticky: redraw the note body + live text (the committed note is
+  // skipped during edit). Render even when text is empty so the body stays visible.
+  if (editingTextId) {
+    const shape = findShapeById(editingTextId);
+    if (shape && shape.tool === 'sticky') {
+      const b = getShapeBounds(shape);
+      drawSticky(b.x, b.y, b.width, b.height, shape.fillColor, text, shape.fontSize);
+      return;
+    }
+  }
+
   if (!text) return;
 
   // Handle new text creation
@@ -2457,6 +2506,9 @@ function drawShape(item) {
     drawEllipseShape(b.x, b.y, b.width, b.height, color, sw, item.strokeStyle, item.fillColor);
   } else if (tool === 'text') {
     drawText(item.x, item.y, item.text, color, item.fontSize, item.fontFamily);
+  } else if (tool === 'sticky') {
+    const b = getShapeBounds(item);
+    drawSticky(b.x, b.y, b.width, b.height, item.fillColor, item.text, item.fontSize);
   } else if (tool === 'highlight') {
     ctx.save();
     ctx.globalAlpha = 0.35;
@@ -2530,6 +2582,9 @@ function drawShapePreview(shape, dx, dy) {
     drawEllipseShape(b.x + dx, b.y + dy, b.width, b.height, shape.color, shape.strokeWidth || 2, shape.strokeStyle, shape.fillColor);
   } else if (shape.tool === 'text') {
     drawText(shape.x + dx, shape.y + dy, shape.text, shape.color, shape.fontSize, shape.fontFamily);
+  } else if (shape.tool === 'sticky') {
+    const b = getShapeBounds(shape);
+    drawSticky(b.x + dx, b.y + dy, b.width, b.height, shape.fillColor, shape.text, shape.fontSize);
   } else if (shape.tool === 'highlight') {
     // The function's outer save/restore (below) scopes this globalAlpha override.
     const movedPoints = shape.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
@@ -2683,6 +2738,31 @@ function drawEllipseShape(x, y, width, height, color, sw, strokeStyle, fillColor
   ctx.strokeStyle = color;
   ctx.stroke();
   ctx.setLineDash([]);
+}
+
+// Render a sticky note: rounded filled rect + word-wrapped text. Text is drawn
+// with canvas fillText (NEVER innerHTML — it is untrusted peer data). save/restore
+// so font/textBaseline/fillStyle never leak into other shapes' draws.
+function drawSticky(x, y, width, height, fillColor, text, fontSize) {
+  const pad = 12;
+  ctx.save();
+  ctx.fillStyle = fillColor || '#fff8b8';
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(x, y, width, height, 6);
+  else ctx.rect(x, y, width, height);
+  ctx.fill();
+  if (text) {
+    const fs = fontSize || 16;
+    ctx.fillStyle = '#1a1a1a';
+    ctx.font = `${fs}px Inter, sans-serif`;
+    ctx.textBaseline = 'top';
+    const lines = wrapText((s) => ctx.measureText(s).width, text, width - pad * 2);
+    for (let i = 0; i < lines.length; i++) {
+      const ly = y + pad + i * (fs * 1.3);
+      if (ly + fs <= y + height - pad) ctx.fillText(lines[i], x + pad, ly);
+    }
+  }
+  ctx.restore();
 }
 
 function drawText(x, y, text, color, size = 20, family = 'Arial') {
