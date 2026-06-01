@@ -11,3 +11,12 @@ describe('safeToolName allowlist — Phase 1 tools', () => {
     expect(safeToolName('<img src=x onerror=alert(1)>')).toBe('shape');
   });
 });
+
+describe('safeToolName — Phase 2', () => {
+  it('passes through "highlight"', () => {
+    expect(safeToolName('highlight')).toBe('highlight');
+  });
+  it('does NOT treat "laser" as a persisted shape tool', () => {
+    expect(safeToolName('laser')).toBe('shape');
+  });
+});

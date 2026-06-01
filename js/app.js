@@ -56,6 +56,7 @@ const toolSettings = {
   rect: { strokeWidth: 2, fillEnabled: false, fillColor: '#ffffff' },
   circle: { strokeWidth: 2, fillEnabled: false, fillColor: '#ffffff' },
   freehand: { strokeWidth: 2 },
+  highlight: { strokeWidth: 16 },
   text: { fontSize: 20, fontFamily: 'Arial' },
   'eraser-brush': { strokeWidth: 4 },
   arrow: { strokeWidth: 2 },
@@ -211,6 +212,7 @@ async function main() {
     'draw-rect': 'rect',
     'draw-circle': 'circle',
     'draw-freehand': 'freehand',
+    'draw-highlight': 'highlight',
     'draw-text': 'text',
     'eraser-shape': 'eraser-shape',
     'eraser-brush': 'eraser-brush',
@@ -218,6 +220,7 @@ async function main() {
     'draw-diamond': 'diamond',
     'draw-triangle': 'triangle',
     'draw-ellipse': 'ellipse',
+    'tool-laser': 'laser',
   };
 
   Object.entries(toolButtons).forEach(([btnId, toolName]) => {
@@ -651,11 +654,19 @@ function updateOptionsVisibility(toolName) {
     fillOption.style.display = hasFill ? 'flex' : 'none';
   }
 
-  // Show/hide stroke options (hide for select and eraser-shape)
-  const hasStroke = !['select', 'eraser-shape'].includes(toolName);
+  // Show/hide stroke options (hide for select, eraser-shape, and the laser
+  // pointer — the laser uses a fixed width, so stroke controls are meaningless).
+  const hasStroke = !['select', 'eraser-shape', 'laser'].includes(toolName);
   const strokeOption = document.querySelector('.stroke-option');
   if (strokeOption) {
     strokeOption.style.display = hasStroke ? 'flex' : 'none';
+  }
+
+  // Stroke STYLE (solid/dashed/dotted) is meaningless for the highlighter, which
+  // is always solid — hide the segmented control for it (width slider stays).
+  const styleGroup = document.querySelector('.stroke-style-group');
+  if (styleGroup) {
+    styleGroup.style.display = (hasStroke && toolName !== 'highlight') ? 'flex' : 'none';
   }
 
   // Show/hide the divider between stroke and fill options
@@ -684,6 +695,7 @@ function setActiveTool(tool) {
     'rect': 'draw-rect',
     'circle': 'draw-circle',
     'freehand': 'draw-freehand',
+    'highlight': 'draw-highlight',
     'text': 'draw-text',
     'eraser-shape': 'eraser-shape',
     'eraser-brush': 'eraser-brush',
@@ -691,6 +703,7 @@ function setActiveTool(tool) {
     'diamond': 'draw-diamond',
     'triangle': 'draw-triangle',
     'ellipse': 'draw-ellipse',
+    'laser': 'tool-laser',
   };
 
   const btnId = toolToButtonId[tool];
@@ -777,6 +790,7 @@ function setupKeyboardShortcuts() {
       const toolShortcuts = {
         'v': 'select',
         'p': 'freehand',
+        'h': 'highlight',
         'l': 'line',
         'r': 'rect',
         'c': 'circle',
@@ -786,6 +800,7 @@ function setupKeyboardShortcuts() {
         'd': 'diamond',
         'y': 'triangle',
         'o': 'ellipse',
+        'q': 'laser',
       };
 
       const tool = toolShortcuts[e.key.toLowerCase()];
@@ -1062,6 +1077,7 @@ function getShapeBoundsForFit(shape) {
         width: 100,
         height: shape.fontSize || 20
       };
+    case 'highlight':
     case 'freehand':
     case 'eraser':
       if (!shape.points || shape.points.length === 0) return null;

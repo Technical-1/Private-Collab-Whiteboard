@@ -431,6 +431,7 @@ export function showKeyboardShortcuts() {
     { category: 'Tools', items: [
       { key: 'V', desc: 'Select tool' },
       { key: 'P', desc: 'Pencil / Freehand' },
+      { key: 'H', desc: 'Highlighter' },
       { key: 'L', desc: 'Line tool' },
       { key: 'A', desc: 'Arrow tool' },
       { key: 'R', desc: 'Rectangle tool' },
@@ -440,6 +441,7 @@ export function showKeyboardShortcuts() {
       { key: 'O', desc: 'Ellipse tool' },
       { key: 'T', desc: 'Text tool' },
       { key: 'E', desc: 'Eraser (shape)' },
+      { key: 'Q', desc: 'Laser pointer' },
     ]},
     { category: 'Actions', items: [
       { key: 'Ctrl+Z', desc: 'Undo', mac: '⌘Z' },

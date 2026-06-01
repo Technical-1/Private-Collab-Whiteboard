@@ -8,8 +8,13 @@ import {
   refreshCursors,
   updateCurrentDrawing,
   clearCurrentDrawing,
-  getRemoteDrawings
+  getRemoteDrawings,
+  updateLaser,
+  clearLaser,
+  getRemoteLasers,
+  getLocalUserColor
 } from './awareness.js';
+import { pruneTrail, MAX_TRAIL_AGE_MS } from './laser-trail.js';
 import { showAlert } from './modal.js';
 import { ZOOM_MIN, ZOOM_MAX, HIT_TEST_THRESHOLD } from './config.js';
 
@@ -103,6 +108,8 @@ let drawing = false;
 let startX = 0;
 let startY = 0;
 let currentTool = 'select';
+let laserTrail = [];        // ephemeral world-coord points {x,y,t}; never persisted
+let laserAnimating = false; // guards the fade animation rAF loop
 let currentStrokeStyle = 'solid';   // 'solid' | 'dashed' | 'dotted' (global setting)
 let currentArrowHeads = 'end';      // 'end' | 'both'
 let currentBoardObserver = null;
@@ -363,6 +370,9 @@ export function setupDrawing(canvasEl, boardsMap, awarenessInstance, getBoardFn)
 
   return {
     setTool: (tool) => {
+      laserTrail = [];
+      clearLaser();
+      isDragging = false; // cancel any in-progress drag so it can't be orphaned by a mid-drag tool switch
       currentTool = tool;
       clearSelection();
       updateCanvasCursor();
@@ -390,7 +400,7 @@ function updateCanvasCursor() {
     container.classList.add('tool-select');
   } else if (currentTool === 'eraser-shape') {
     container.classList.add('tool-eraser');
-  } else if (currentTool === 'freehand' || currentTool === 'eraser-brush') {
+  } else if (currentTool === 'freehand' || currentTool === 'highlight' || currentTool === 'eraser-brush') {
     container.classList.add('tool-freehand');
   }
 }
@@ -466,7 +476,7 @@ function handleMouseDown(e) {
   }
 
   // Handle freehand and brush eraser
-  if (currentTool === 'freehand' || currentTool === 'eraser-brush') {
+  if (currentTool === 'freehand' || currentTool === 'highlight' || currentTool === 'eraser-brush') {
     if (!canMutate()) return; // Block in read-only mode
     drawing = true;
     freehandPoints = [{ x: startX, y: startY }];
@@ -514,12 +524,12 @@ function handleMouseUp(e) {
   clearCurrentDrawing();
 
   // Handle freehand drawing
-  if (currentTool === 'freehand' && freehandPoints.length > 1) {
+  if ((currentTool === 'freehand' || currentTool === 'highlight') && freehandPoints.length > 1) {
     addDrawing({
-      tool: 'freehand',
+      tool: currentTool, // 'freehand' or 'highlight'
       points: [...freehandPoints],
       strokeWidth: strokeWidth,
-      strokeStyle: currentStrokeStyle
+      strokeStyle: currentTool === 'freehand' ? currentStrokeStyle : 'solid'
     });
     freehandPoints = [];
     redrawCanvas();
@@ -603,6 +613,16 @@ function handleMouseMove(e) {
   // Update cursor position for other users to see (use world coords for cross-viewport consistency)
   updateCursorPosition(x, y);
 
+  // Laser pointer: ephemeral trail broadcast via awareness, never persisted.
+  if (currentTool === 'laser') {
+    const now = Date.now();
+    laserTrail.push({ x, y, t: now });
+    laserTrail = pruneTrail(laserTrail, now);
+    updateLaser(laserTrail);
+    redrawCanvas();
+    return;
+  }
+
   // Handle dragging
   if (isDragging && selectedIds.size > 0) {
     // Draw preview of dragged shapes
@@ -619,12 +639,12 @@ function handleMouseMove(e) {
   }
 
   // Handle freehand drawing preview
-  if (drawing && (currentTool === 'freehand' || currentTool === 'eraser-brush')) {
+  if (drawing && (currentTool === 'freehand' || currentTool === 'highlight' || currentTool === 'eraser-brush')) {
     freehandPoints.push({ x, y });
     drawFreehandPreview();
     // Broadcast to other users
     updateCurrentDrawing({
-      tool: currentTool === 'eraser-brush' ? 'eraser' : 'freehand',
+      tool: currentTool === 'eraser-brush' ? 'eraser' : currentTool, // 'freehand' or 'highlight'
       points: freehandPoints,
       strokeWidth: currentTool === 'eraser-brush' ? strokeWidth * 3 : strokeWidth
     });
@@ -711,6 +731,7 @@ function handleMouseMove(e) {
 }
 
 function handleMouseLeave() {
+  if (laserTrail.length) { laserTrail = []; clearLaser(); }
   clearCursorPosition();
   // Only clear hover, keep selection and its controls
   if (selectedIds.size === 0) {
@@ -1755,7 +1776,7 @@ function moveShape(shapeId, dx, dy) {
   } else if (shape.tool === 'text') {
     updated.x += dx;
     updated.y += dy;
-  } else if (shape.tool === 'freehand' || shape.tool === 'eraser') {
+  } else if (shape.tool === 'freehand' || shape.tool === 'highlight' || shape.tool === 'eraser') {
     if (updated.points) {
       updated.points = updated.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
     }
@@ -1988,6 +2009,7 @@ function hitTestShape(x, y, shape, threshold = 8) {
              y >= shape.y - fs && y <= shape.y;
     }
 
+    case 'highlight':
     case 'freehand':
     case 'eraser': {
       if (!shape.points || shape.points.length < 2) return false;
@@ -2100,6 +2122,7 @@ export function getShapeBounds(shape) {
       };
     }
 
+    case 'highlight':
     case 'freehand':
     case 'eraser': {
       if (!shape.points || shape.points.length === 0) {
@@ -2253,6 +2276,9 @@ function redrawCanvas() {
   // Draw remote users' in-progress drawings (live preview)
   drawRemoteDrawings();
 
+  // Draw laser pointers (local + remote, ephemeral, awareness-only)
+  drawLasers();
+
   // Draw local text being created (live preview)
   drawLocalTextPreview();
 
@@ -2285,7 +2311,10 @@ function drawRemoteDrawings() {
     ctx.globalAlpha = 0.6; // Semi-transparent to show it's in-progress
     ctx.lineWidth = drawing.strokeWidth || 2;
 
-    if (drawing.tool === 'freehand' || drawing.tool === 'eraser') {
+    if (drawing.tool === 'highlight') {
+      ctx.globalAlpha = 0.35;
+      drawFreehand(drawing.points, drawing.color, drawing.strokeWidth || 2);
+    } else if (drawing.tool === 'freehand' || drawing.tool === 'eraser') {
       const color = drawing.tool === 'eraser' ? '#FFFFFF' : drawing.color;
       drawFreehand(drawing.points, color, drawing.strokeWidth || 2);
     } else if (drawing.tool === 'line') {
@@ -2316,6 +2345,62 @@ function drawRemoteDrawings() {
 
     ctx.restore();
   });
+}
+
+// Render local + remote laser pointers as a fading trail + glow dot. Ephemeral:
+// prunes the LOCAL trail by age here too, so it expires (and peers are notified
+// via clearLaser) even when the mouse stops moving. Self-schedules repaint while
+// any trail is alive so the fade animates without further input.
+function drawLasers() {
+  const now = Date.now();
+
+  // Expire the local trail even without mouse movement; notify peers when it dies.
+  if (laserTrail.length) {
+    laserTrail = pruneTrail(laserTrail, now);
+    if (laserTrail.length === 0) clearLaser();
+  }
+
+  const lasers = getRemoteLasers().map(l => ({ color: l.color, points: pruneTrail(l.points, now) }));
+  if (laserTrail.length) lasers.push({ color: getLocalUserColor(), points: laserTrail });
+
+  let anyActive = false;
+  for (const l of lasers) {
+    const pts = l.points;
+    if (!pts.length) continue;
+    anyActive = true;
+    const color = l.color || '#ff2d55';
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    // Fading trail
+    for (let i = 1; i < pts.length; i++) {
+      const age = (now - pts[i].t) / MAX_TRAIL_AGE_MS;
+      ctx.globalAlpha = Math.max(0, 1 - age) * 0.6;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 4 / viewport.zoom;
+      ctx.beginPath();
+      ctx.moveTo(pts[i - 1].x, pts[i - 1].y);
+      ctx.lineTo(pts[i].x, pts[i].y);
+      ctx.stroke();
+    }
+    // Glowing head dot
+    const head = pts[pts.length - 1];
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = color;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 12 / viewport.zoom;
+    ctx.beginPath();
+    ctx.arc(head.x, head.y, 5 / viewport.zoom, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  if (anyActive) {
+    if (!laserAnimating) {
+      laserAnimating = true;
+      requestAnimationFrame(() => { laserAnimating = false; redrawCanvas(); });
+    }
+  }
 }
 
 // Draw local text being created or edited (live preview for the creator)
@@ -2351,7 +2436,9 @@ function drawShape(item) {
 
   // Legacy tools delegate to drawers that don't self-manage dashing; apply it here.
   // (arrow/diamond/triangle/ellipse set their own dash inside their drawers.)
-  const legacyDash = tool === 'line' || tool === 'rect' || tool === 'circle' || tool === 'freehand';
+  // 'highlight' is included so its (always-solid) dash state is explicitly reset,
+  // guaranteeing a highlight can never inherit a dash from a prior shape's draw.
+  const legacyDash = tool === 'line' || tool === 'rect' || tool === 'circle' || tool === 'freehand' || tool === 'highlight';
   if (legacyDash) ctx.setLineDash(dashPattern(item.strokeStyle).map(d => d / viewport.zoom));
 
   if (tool === 'line') {
@@ -2370,6 +2457,11 @@ function drawShape(item) {
     drawEllipseShape(b.x, b.y, b.width, b.height, color, sw, item.strokeStyle, item.fillColor);
   } else if (tool === 'text') {
     drawText(item.x, item.y, item.text, color, item.fontSize, item.fontFamily);
+  } else if (tool === 'highlight') {
+    ctx.save();
+    ctx.globalAlpha = 0.35;
+    drawFreehand(item.points, color, sw);
+    ctx.restore();
   } else if (tool === 'freehand' || tool === 'eraser') {
     drawFreehand(item.points, color, sw);
   }
@@ -2438,6 +2530,11 @@ function drawShapePreview(shape, dx, dy) {
     drawEllipseShape(b.x + dx, b.y + dy, b.width, b.height, shape.color, shape.strokeWidth || 2, shape.strokeStyle, shape.fillColor);
   } else if (shape.tool === 'text') {
     drawText(shape.x + dx, shape.y + dy, shape.text, shape.color, shape.fontSize, shape.fontFamily);
+  } else if (shape.tool === 'highlight') {
+    // The function's outer save/restore (below) scopes this globalAlpha override.
+    const movedPoints = shape.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
+    ctx.globalAlpha = 0.35;
+    drawFreehand(movedPoints, shape.color, shape.strokeWidth || 2);
   } else if (shape.tool === 'freehand' || shape.tool === 'eraser') {
     const movedPoints = shape.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
     drawFreehand(movedPoints, shape.color, shape.strokeWidth || 2);
@@ -2497,7 +2594,7 @@ function drawFreehandPreview() {
   ctx.save();
   ctx.scale(viewport.zoom, viewport.zoom);
   ctx.translate(-viewport.x, -viewport.y);
-  ctx.globalAlpha = 0.7;
+  ctx.globalAlpha = currentTool === 'highlight' ? 0.35 : 0.7;
   drawFreehand(freehandPoints, color, sw);
   ctx.restore();
 }
