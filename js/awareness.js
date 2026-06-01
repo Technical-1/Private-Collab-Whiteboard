@@ -334,7 +334,10 @@ export function getRemoteLasers() {
     if (clientId === localAwareness.clientID) return;
     const user = state?.user;
     if (user?.laser && user.laser.length) {
-      out.push({ id: user.id, color: user.color, points: user.laser });
+      // Cap points from an untrusted peer: a 700ms trail at mouse rate is well
+      // under 100 points, so 300 is generous and bounds per-frame render work.
+      const points = user.laser.length > 300 ? user.laser.slice(-300) : user.laser;
+      out.push({ id: user.id, color: user.color, points });
     }
   });
   return out;

@@ -248,8 +248,10 @@ async function main() {
     };
   });
 
-  // Wire up sticky note color palette
+  // Wire up sticky note color palette. Swatch backgrounds are set here via CSSOM
+  // (not an inline style attribute) because the production CSP forbids inline styles.
   document.querySelectorAll('.sticky-color').forEach(btn => {
+    btn.style.background = btn.dataset.color;
     btn.onclick = () => {
       document.querySelectorAll('.sticky-color').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');

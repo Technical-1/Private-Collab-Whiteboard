@@ -17,7 +17,7 @@ export const MSG = {
  * only (see signedBytes / signUpdate).
  * @param {Uint8Array} update
  * @param {number} epoch
- * @param {Uint8Array} sig - 64-byte Ed25519 signature
+ * @param {Uint8Array} sig - ECDSA P-256 signature bytes
  * @returns {Uint8Array}
  */
 export function encodeEnvelope(update, epoch, sig) {

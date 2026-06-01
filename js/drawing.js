@@ -1082,14 +1082,17 @@ export function pasteShapes(offsetX = 20, offsetY = 20) {
   // Clear current selection
   selectedIds.clear();
 
-  // Paste each shape with new ID and offset
-  clipboard.forEach(shapeCopy => {
-    const newShape = {
-      ...shapeCopy,
-      id: generateId(),
-      locked: false // Don't paste locked state
-    };
+  // Assign new ids up front and remember old→new, so a pasted connector can be
+  // re-pointed at the pasted COPIES of its endpoints rather than the originals.
+  const idMap = new Map();
+  const prepared = clipboard.map(shapeCopy => {
+    const newId = generateId();
+    idMap.set(shapeCopy.id, newId);
+    return { ...shapeCopy, id: newId, locked: false };
+  });
 
+  let pasted = 0;
+  prepared.forEach(newShape => {
     // Offset position
     if (newShape.x !== undefined) newShape.x += offsetX;
     if (newShape.y !== undefined) newShape.y += offsetY;
@@ -1104,12 +1107,24 @@ export function pasteShapes(offsetX = 20, offsetY = 20) {
       }));
     }
 
+    // Connectors bind by id. Re-point to the pasted endpoint copies; if an endpoint
+    // wasn't part of the copied set, drop the connector rather than create a
+    // confusing duplicate bound to (and overlapping) the originals.
+    if (newShape.tool === 'connector') {
+      const from = idMap.get(newShape.fromId);
+      const to = idMap.get(newShape.toId);
+      if (!from || !to) return;
+      newShape.fromId = from;
+      newShape.toId = to;
+    }
+
     board.push([newShape]);
     selectedIds.add(newShape.id);
+    pasted++;
   });
 
   redrawCanvas();
-  return clipboard.length;
+  return pasted;
 }
 
 /**
@@ -2865,7 +2880,11 @@ function drawSticky(x, y, width, height, fillColor, text, fontSize) {
     ctx.fillStyle = '#1a1a1a';
     ctx.font = `${fs}px Inter, sans-serif`;
     ctx.textBaseline = 'top';
-    const lines = wrapText((s) => ctx.measureText(s).width, text, width - pad * 2);
+    // Cap length before wrapping: a peer could inject an enormous single "word",
+    // and wrapText's per-char hard-break does an O(n) measureText scan per line.
+    // No real note exceeds this, and only what fits the note height renders anyway.
+    const capped = text.length > 4000 ? text.slice(0, 4000) : text;
+    const lines = wrapText((s) => ctx.measureText(s).width, capped, width - pad * 2);
     for (let i = 0; i < lines.length; i++) {
       const ly = y + pad + i * (fs * 1.3);
       if (ly + fs <= y + height - pad) ctx.fillText(lines[i], x + pad, ly);
@@ -2877,6 +2896,7 @@ function drawSticky(x, y, width, height, fillColor, text, fontSize) {
 function drawText(x, y, text, color, size = 20, family = 'Arial') {
   ctx.fillStyle = color;
   ctx.font = `${size}px ${family}`;
+  ctx.textBaseline = 'alphabetic'; // explicit: don't inherit a baseline left by another draw
   ctx.fillText(text, x, y);
 }
 
