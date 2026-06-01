@@ -971,6 +971,31 @@ body {
   color: white;
 }
 
+/* Sticky-note color palette */
+.sticky-palette {
+  display: flex;
+  gap: 6px;
+}
+
+.sticky-color {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s;
+}
+
+.sticky-color:hover {
+  transform: scale(1.12);
+}
+
+.sticky-color.active {
+  border-color: var(--text-primary);
+  box-shadow: 0 0 0 2px var(--primary);
+}
+
 .options-panel input[type="range"] {
   width: 60px;
   height: 4px;
