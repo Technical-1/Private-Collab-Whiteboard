@@ -1911,16 +1911,22 @@ function deleteShape(shapeId) {
       showAlert('Shape Locked', 'This shape is locked and cannot be deleted. Unlock it first.');
       return;
     }
-    board.delete(index);
-    selectedIds.delete(shapeId);
-    if (hoveredId === shapeId) {
-      hoveredId = null;
-    }
-    hideShapeControls(true); // Force close popup when shape is deleted
-    // A connector bound to the just-deleted shape is now dangling; remove it so it
-    // doesn't linger as an invisible (skipped-render) shape. The deletion syncs to
-    // peers, so only the deleting client needs to run this.
-    removeDanglingConnectors();
+    // One transaction => one undo step: undoing the shape also restores any
+    // connector this cascade removes.
+    const run = () => {
+      board.delete(index);
+      selectedIds.delete(shapeId);
+      if (hoveredId === shapeId) {
+        hoveredId = null;
+      }
+      hideShapeControls(true); // Force close popup when shape is deleted
+      // A connector bound to the just-deleted shape is now dangling; remove it so it
+      // doesn't linger as an invisible (skipped-render) shape. The deletion syncs to
+      // peers, so only the deleting client needs to run this.
+      removeDanglingConnectors();
+    };
+    if (board.doc) board.doc.transact(run);
+    else run();
   }
 }
 
