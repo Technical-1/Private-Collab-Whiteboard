@@ -1,6 +1,7 @@
 import * as Y from 'yjs';
 import { generateId, safeColor, safeNumber, safeToolName } from './utils.js';
 import { sanitizeShape } from './shape-schema.js';
+import { arrowHeadPoints, polygonPoints, pointInPolygon, dashPattern } from './draw-geometry.js';
 import {
   updateCursorPosition,
   clearCursorPosition,
@@ -102,6 +103,8 @@ let drawing = false;
 let startX = 0;
 let startY = 0;
 let currentTool = 'select';
+let currentStrokeStyle = 'solid';   // 'solid' | 'dashed' | 'dotted' (global setting)
+let currentArrowHeads = 'end';      // 'end' | 'both'
 let currentBoardObserver = null;
 // The exact Y.Array instance we're currently observing. The boards Y.Map can
 // swap a board's array instance out from under us — e.g. when each peer creates
@@ -368,6 +371,7 @@ export function setupDrawing(canvasEl, boardsMap, awarenessInstance, getBoardFn)
     redraw: () => redrawCanvas(),
     subscribeToBoard,
     setStrokeWidth: (width) => { strokeWidth = width; },
+    setStrokeStyle: (style) => { currentStrokeStyle = style; },
     setFillEnabled: (enabled) => { fillEnabled = enabled; },
     setFillColor: (color) => { fillColor = color; },
     setFontSize: (size) => { fontSize = size; },
@@ -470,7 +474,7 @@ function handleMouseDown(e) {
   }
 
   // Handle shape drawing tools
-  if (['line', 'rect', 'circle'].includes(currentTool)) {
+  if (['line', 'rect', 'circle', 'arrow', 'diamond', 'triangle', 'ellipse'].includes(currentTool)) {
     if (!canMutate()) return; // Block in read-only mode
     drawing = true;
   }
@@ -514,7 +518,8 @@ function handleMouseUp(e) {
     addDrawing({
       tool: 'freehand',
       points: [...freehandPoints],
-      strokeWidth: strokeWidth
+      strokeWidth: strokeWidth,
+      strokeStyle: currentStrokeStyle
     });
     freehandPoints = [];
     redrawCanvas();
@@ -542,7 +547,8 @@ function handleMouseUp(e) {
       startY,
       x,
       y,
-      strokeWidth: strokeWidth
+      strokeWidth: strokeWidth,
+      strokeStyle: currentStrokeStyle
     });
   } else if (currentTool === 'rect') {
     addDrawing({
@@ -552,6 +558,7 @@ function handleMouseUp(e) {
       width: x - startX,
       height: y - startY,
       strokeWidth: strokeWidth,
+      strokeStyle: currentStrokeStyle,
       fillColor: fillEnabled ? fillColor : null
     });
   } else if (currentTool === 'circle') {
@@ -562,7 +569,23 @@ function handleMouseUp(e) {
       startY,
       radius,
       strokeWidth: strokeWidth,
+      strokeStyle: currentStrokeStyle,
       fillColor: fillEnabled ? fillColor : null
+    });
+  } else if (currentTool === 'arrow') {
+    addDrawing({
+      tool: 'arrow', startX, startY, x, y,
+      strokeWidth,
+      strokeStyle: currentStrokeStyle,
+      arrowHeads: currentArrowHeads,
+    });
+  } else if (currentTool === 'diamond' || currentTool === 'triangle' || currentTool === 'ellipse') {
+    addDrawing({
+      tool: currentTool, startX, startY,
+      width: x - startX, height: y - startY,
+      strokeWidth,
+      strokeStyle: currentStrokeStyle,
+      fillColor: fillEnabled ? fillColor : null,
     });
   }
 }
@@ -609,7 +632,7 @@ function handleMouseMove(e) {
   }
 
   // Handle shape drawing preview
-  if (drawing && ['line', 'rect', 'circle'].includes(currentTool)) {
+  if (drawing && ['line', 'rect', 'circle', 'arrow', 'diamond', 'triangle', 'ellipse'].includes(currentTool)) {
     redrawCanvas();
     drawShapeCreationPreview(x, y);
     // Broadcast to other users
@@ -618,7 +641,7 @@ function handleMouseMove(e) {
         tool: 'line',
         startX, startY,
         x, y,
-        strokeWidth
+        strokeWidth, strokeStyle: currentStrokeStyle,
       });
     } else if (currentTool === 'rect') {
       updateCurrentDrawing({
@@ -626,7 +649,7 @@ function handleMouseMove(e) {
         startX, startY,
         width: x - startX,
         height: y - startY,
-        strokeWidth,
+        strokeWidth, strokeStyle: currentStrokeStyle,
         fillColor: fillEnabled ? fillColor : null
       });
     } else if (currentTool === 'circle') {
@@ -635,8 +658,20 @@ function handleMouseMove(e) {
         tool: 'circle',
         startX, startY,
         radius,
-        strokeWidth,
+        strokeWidth, strokeStyle: currentStrokeStyle,
         fillColor: fillEnabled ? fillColor : null
+      });
+    } else if (currentTool === 'arrow') {
+      updateCurrentDrawing({
+        tool: 'arrow', startX, startY, x, y,
+        strokeWidth, strokeStyle: currentStrokeStyle, arrowHeads: currentArrowHeads,
+      });
+    } else if (currentTool === 'diamond' || currentTool === 'triangle' || currentTool === 'ellipse') {
+      updateCurrentDrawing({
+        tool: currentTool, startX, startY,
+        width: x - startX, height: y - startY,
+        strokeWidth, strokeStyle: currentStrokeStyle,
+        fillColor: fillEnabled ? fillColor : null,
       });
     }
     return;
@@ -1135,7 +1170,7 @@ function showShapeSettingsPopup(shape, bounds) {
 
   // Determine which controls to show based on shape type
   const hasStroke = shape.tool !== 'text';
-  const hasFill = shape.tool === 'rect' || shape.tool === 'circle';
+  const hasFill = ['rect', 'circle', 'diamond', 'triangle', 'ellipse'].includes(shape.tool);
   const isText = shape.tool === 'text';
 
   // Dynamic header based on shape type. shape.tool is peer-controlled and lands
@@ -1724,6 +1759,14 @@ function moveShape(shapeId, dx, dy) {
     if (updated.points) {
       updated.points = updated.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
     }
+  } else if (shape.tool === 'arrow') {
+    updated.startX += dx;
+    updated.startY += dy;
+    updated.x += dx;
+    updated.y += dy;
+  } else if (shape.tool === 'diamond' || shape.tool === 'triangle' || shape.tool === 'ellipse') {
+    updated.startX += dx;
+    updated.startY += dy;
   }
 
   board.delete(index);
@@ -1958,6 +2001,27 @@ function hitTestShape(x, y, shape, threshold = 8) {
       return false;
     }
 
+    case 'arrow':
+      return pointToLineDistance(x, y, shape.startX, shape.startY, shape.x, shape.y) < sw;
+
+    case 'diamond':
+    case 'triangle': {
+      const b = getShapeBounds(shape);
+      // pointInPolygon covers the filled (interior) case too; bbox would wrongly
+      // hit the corners of a diamond/triangle that lie outside the shape.
+      return pointInPolygon(x, y, polygonPoints(shape.tool, b));
+    }
+
+    case 'ellipse': {
+      const b = getShapeBounds(shape);
+      const rx = b.width / 2 || 1, ry = b.height / 2 || 1;
+      const nx = (x - (b.x + rx)) / rx, ny = (y - (b.y + ry)) / ry;
+      const dist = Math.hypot(nx, ny);            // 1.0 == on the outline
+      const tol = sw / Math.min(rx, ry);          // stroke tolerance, normalized
+      if (shape.fillColor) return dist <= 1 + tol;
+      return Math.abs(dist - 1) < tol;
+    }
+
     default:
       return false;
   }
@@ -2055,6 +2119,26 @@ export function getShapeBounds(shape) {
         height: maxY - minY
       };
     }
+
+    case 'arrow':
+      return {
+        x: Math.min(shape.startX, shape.x),
+        y: Math.min(shape.startY, shape.y),
+        width: Math.abs(shape.x - shape.startX),
+        height: Math.abs(shape.y - shape.startY)
+      };
+
+    // diamond/triangle/ellipse are all bbox-based (startX,startY,width,height) —
+    // note ellipse is intentionally NOT center+radius like 'circle'.
+    case 'diamond':
+    case 'triangle':
+    case 'ellipse':
+      return {
+        x: Math.min(shape.startX, shape.startX + shape.width),
+        y: Math.min(shape.startY, shape.startY + shape.height),
+        width: Math.abs(shape.width),
+        height: Math.abs(shape.height)
+      };
 
     default:
       return { x: 0, y: 0, width: 0, height: 0 };
@@ -2205,11 +2289,27 @@ function drawRemoteDrawings() {
       const color = drawing.tool === 'eraser' ? '#FFFFFF' : drawing.color;
       drawFreehand(drawing.points, color, drawing.strokeWidth || 2);
     } else if (drawing.tool === 'line') {
+      ctx.setLineDash(dashPattern(drawing.strokeStyle).map(d => d / viewport.zoom));
       drawLine(drawing.startX, drawing.startY, drawing.x, drawing.y, drawing.color);
+      ctx.setLineDash([]);
     } else if (drawing.tool === 'rect') {
+      ctx.setLineDash(dashPattern(drawing.strokeStyle).map(d => d / viewport.zoom));
       drawRect(drawing.startX, drawing.startY, drawing.width, drawing.height, drawing.color, drawing.fillColor);
+      ctx.setLineDash([]);
     } else if (drawing.tool === 'circle') {
+      ctx.setLineDash(dashPattern(drawing.strokeStyle).map(d => d / viewport.zoom));
       drawCircle(drawing.startX, drawing.startY, drawing.radius, drawing.color, drawing.fillColor);
+      ctx.setLineDash([]);
+    } else if (drawing.tool === 'arrow') {
+      drawArrow(drawing.startX, drawing.startY, drawing.x, drawing.y, drawing.color, drawing.strokeWidth || 2, drawing.strokeStyle, drawing.arrowHeads);
+    } else if (drawing.tool === 'diamond' || drawing.tool === 'triangle') {
+      const bx = Math.min(drawing.startX, drawing.startX + drawing.width);
+      const by = Math.min(drawing.startY, drawing.startY + drawing.height);
+      drawPolygon(drawing.tool, bx, by, Math.abs(drawing.width), Math.abs(drawing.height), drawing.color, drawing.strokeWidth || 2, drawing.strokeStyle, drawing.fillColor);
+    } else if (drawing.tool === 'ellipse') {
+      const bx = Math.min(drawing.startX, drawing.startX + drawing.width);
+      const by = Math.min(drawing.startY, drawing.startY + drawing.height);
+      drawEllipseShape(bx, by, Math.abs(drawing.width), Math.abs(drawing.height), drawing.color, drawing.strokeWidth || 2, drawing.strokeStyle, drawing.fillColor);
     } else if (drawing.tool === 'text' && drawing.text) {
       drawText(drawing.x, drawing.y, drawing.text, drawing.color, drawing.fontSize, drawing.fontFamily);
     }
@@ -2249,17 +2349,32 @@ function drawShape(item) {
 
   ctx.lineWidth = sw;
 
+  // Legacy tools delegate to drawers that don't self-manage dashing; apply it here.
+  // (arrow/diamond/triangle/ellipse set their own dash inside their drawers.)
+  const legacyDash = tool === 'line' || tool === 'rect' || tool === 'circle' || tool === 'freehand';
+  if (legacyDash) ctx.setLineDash(dashPattern(item.strokeStyle).map(d => d / viewport.zoom));
+
   if (tool === 'line') {
     drawLine(item.startX, item.startY, item.x, item.y, color);
   } else if (tool === 'rect') {
     drawRect(item.startX, item.startY, item.width, item.height, color, item.fillColor);
   } else if (tool === 'circle') {
     drawCircle(item.startX, item.startY, item.radius, color, item.fillColor);
+  } else if (tool === 'arrow') {
+    drawArrow(item.startX, item.startY, item.x, item.y, color, sw, item.strokeStyle, item.arrowHeads);
+  } else if (tool === 'diamond' || tool === 'triangle') {
+    const b = getShapeBounds(item);
+    drawPolygon(tool, b.x, b.y, b.width, b.height, color, sw, item.strokeStyle, item.fillColor);
+  } else if (tool === 'ellipse') {
+    const b = getShapeBounds(item);
+    drawEllipseShape(b.x, b.y, b.width, b.height, color, sw, item.strokeStyle, item.fillColor);
   } else if (tool === 'text') {
     drawText(item.x, item.y, item.text, color, item.fontSize, item.fontFamily);
   } else if (tool === 'freehand' || tool === 'eraser') {
     drawFreehand(item.points, color, sw);
   }
+
+  if (legacyDash) ctx.setLineDash([]);
 }
 
 // Draw shape overlay in world space (selection box)
@@ -2313,6 +2428,14 @@ function drawShapePreview(shape, dx, dy) {
     drawRect(shape.startX + dx, shape.startY + dy, shape.width, shape.height, shape.color, shape.fillColor);
   } else if (shape.tool === 'circle') {
     drawCircle(shape.startX + dx, shape.startY + dy, shape.radius, shape.color, shape.fillColor);
+  } else if (shape.tool === 'arrow') {
+    drawArrow(shape.startX + dx, shape.startY + dy, shape.x + dx, shape.y + dy, shape.color, shape.strokeWidth || 2, shape.strokeStyle, shape.arrowHeads);
+  } else if (shape.tool === 'diamond' || shape.tool === 'triangle') {
+    const b = getShapeBounds(shape);
+    drawPolygon(shape.tool, b.x + dx, b.y + dy, b.width, b.height, shape.color, shape.strokeWidth || 2, shape.strokeStyle, shape.fillColor);
+  } else if (shape.tool === 'ellipse') {
+    const b = getShapeBounds(shape);
+    drawEllipseShape(b.x + dx, b.y + dy, b.width, b.height, shape.color, shape.strokeWidth || 2, shape.strokeStyle, shape.fillColor);
   } else if (shape.tool === 'text') {
     drawText(shape.x + dx, shape.y + dy, shape.text, shape.color, shape.fontSize, shape.fontFamily);
   } else if (shape.tool === 'freehand' || shape.tool === 'eraser') {
@@ -2335,12 +2458,26 @@ function drawShapeCreationPreview(x, y) {
   ctx.lineWidth = strokeWidth;
 
   if (currentTool === 'line') {
+    ctx.setLineDash(dashPattern(currentStrokeStyle).map(d => d / viewport.zoom));
     drawLine(startX, startY, x, y, color);
+    ctx.setLineDash([]);
   } else if (currentTool === 'rect') {
+    ctx.setLineDash(dashPattern(currentStrokeStyle).map(d => d / viewport.zoom));
     drawRect(startX, startY, x - startX, y - startY, color, fillEnabled ? fillColor : null);
+    ctx.setLineDash([]);
   } else if (currentTool === 'circle') {
     const radius = Math.sqrt(Math.pow(x - startX, 2) + Math.pow(y - startY, 2));
+    ctx.setLineDash(dashPattern(currentStrokeStyle).map(d => d / viewport.zoom));
     drawCircle(startX, startY, radius, color, fillEnabled ? fillColor : null);
+    ctx.setLineDash([]);
+  } else if (currentTool === 'arrow') {
+    drawArrow(startX, startY, x, y, color, strokeWidth, currentStrokeStyle, currentArrowHeads);
+  } else if (currentTool === 'diamond' || currentTool === 'triangle') {
+    const bx = Math.min(startX, x), by = Math.min(startY, y);
+    drawPolygon(currentTool, bx, by, Math.abs(x - startX), Math.abs(y - startY), color, strokeWidth, currentStrokeStyle, fillEnabled ? fillColor : null);
+  } else if (currentTool === 'ellipse') {
+    const bx = Math.min(startX, x), by = Math.min(startY, y);
+    drawEllipseShape(bx, by, Math.abs(x - startX), Math.abs(y - startY), color, strokeWidth, currentStrokeStyle, fillEnabled ? fillColor : null);
   }
 
   ctx.restore();
@@ -2393,6 +2530,62 @@ function drawCircle(x, y, radius, color, fillColor) {
   }
   ctx.strokeStyle = color;
   ctx.stroke();
+}
+
+function drawArrow(startX, startY, x, y, color, sw, strokeStyle, arrowHeads) {
+  const headLen = Math.max(8, (sw || 2) * 3);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = sw || 2;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  // Shaft honors the stroke style
+  ctx.setLineDash(dashPattern(strokeStyle).map(d => d / viewport.zoom));
+  ctx.beginPath();
+  ctx.moveTo(startX, startY);
+  ctx.lineTo(x, y);
+  ctx.stroke();
+  // Arrowheads are always solid
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  for (const p of arrowHeadPoints(startX, startY, x, y, headLen)) {
+    ctx.moveTo(x, y); ctx.lineTo(p.x, p.y);
+  }
+  if (arrowHeads === 'both') {
+    for (const p of arrowHeadPoints(x, y, startX, startY, headLen)) {
+      ctx.moveTo(startX, startY); ctx.lineTo(p.x, p.y);
+    }
+  }
+  ctx.stroke();
+}
+
+// x,y,width,height is a normalized bbox (non-negative w/h).
+function drawPolygon(tool, x, y, width, height, color, sw, strokeStyle, fillColor) {
+  const pts = polygonPoints(tool, { x, y, width, height });
+  if (!pts.length) return;
+  ctx.lineWidth = sw || 2;
+  ctx.lineJoin = 'round';
+  ctx.setLineDash(dashPattern(strokeStyle).map(d => d / viewport.zoom));
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.closePath();
+  if (fillColor) { ctx.fillStyle = fillColor; ctx.fill(); }
+  ctx.strokeStyle = color;
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function drawEllipseShape(x, y, width, height, color, sw, strokeStyle, fillColor) {
+  const cx = x + width / 2, cy = y + height / 2;
+  const rx = Math.abs(width / 2) || 0.01, ry = Math.abs(height / 2) || 0.01;
+  ctx.lineWidth = sw || 2;
+  ctx.setLineDash(dashPattern(strokeStyle).map(d => d / viewport.zoom));
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+  if (fillColor) { ctx.fillStyle = fillColor; ctx.fill(); }
+  ctx.strokeStyle = color;
+  ctx.stroke();
+  ctx.setLineDash([]);
 }
 
 function drawText(x, y, text, color, size = 20, family = 'Arial') {

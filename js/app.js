@@ -57,7 +57,11 @@ const toolSettings = {
   circle: { strokeWidth: 2, fillEnabled: false, fillColor: '#ffffff' },
   freehand: { strokeWidth: 2 },
   text: { fontSize: 20, fontFamily: 'Arial' },
-  'eraser-brush': { strokeWidth: 4 }
+  'eraser-brush': { strokeWidth: 4 },
+  arrow: { strokeWidth: 2 },
+  diamond: { strokeWidth: 2, fillEnabled: false, fillColor: '#ffffff' },
+  triangle: { strokeWidth: 2, fillEnabled: false, fillColor: '#ffffff' },
+  ellipse: { strokeWidth: 2, fillEnabled: false, fillColor: '#ffffff' }
 };
 
 let currentToolName = 'select';
@@ -209,7 +213,11 @@ async function main() {
     'draw-freehand': 'freehand',
     'draw-text': 'text',
     'eraser-shape': 'eraser-shape',
-    'eraser-brush': 'eraser-brush'
+    'eraser-brush': 'eraser-brush',
+    'draw-arrow': 'arrow',
+    'draw-diamond': 'diamond',
+    'draw-triangle': 'triangle',
+    'draw-ellipse': 'ellipse',
   };
 
   Object.entries(toolButtons).forEach(([btnId, toolName]) => {
@@ -223,6 +231,15 @@ async function main() {
     btn.onclick = () => {
       const width = parseInt(btn.dataset.width);
       setStrokeWidth(width);
+    };
+  });
+
+  // Wire up stroke style buttons
+  document.querySelectorAll('.style-btn').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.style-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      drawingController.setStrokeStyle(btn.dataset.style);
     };
   });
 
@@ -627,8 +644,8 @@ function updateOptionsVisibility(toolName) {
     el.style.display = isTextTool ? 'flex' : 'none';
   });
 
-  // Show/hide fill option (only for rect and circle)
-  const hasFill = toolName === 'rect' || toolName === 'circle';
+  // Show/hide fill option (for the fillable shape tools)
+  const hasFill = ['rect', 'circle', 'diamond', 'triangle', 'ellipse'].includes(toolName);
   const fillOption = document.querySelector('.fill-option');
   if (fillOption) {
     fillOption.style.display = hasFill ? 'flex' : 'none';
@@ -669,7 +686,11 @@ function setActiveTool(tool) {
     'freehand': 'draw-freehand',
     'text': 'draw-text',
     'eraser-shape': 'eraser-shape',
-    'eraser-brush': 'eraser-brush'
+    'eraser-brush': 'eraser-brush',
+    'arrow': 'draw-arrow',
+    'diamond': 'draw-diamond',
+    'triangle': 'draw-triangle',
+    'ellipse': 'draw-ellipse',
   };
 
   const btnId = toolToButtonId[tool];
@@ -760,7 +781,11 @@ function setupKeyboardShortcuts() {
         'r': 'rect',
         'c': 'circle',
         't': 'text',
-        'e': 'eraser-shape'
+        'e': 'eraser-shape',
+        'a': 'arrow',
+        'd': 'diamond',
+        'y': 'triangle',
+        'o': 'ellipse',
       };
 
       const tool = toolShortcuts[e.key.toLowerCase()];
@@ -1052,6 +1077,22 @@ function getShapeBoundsForFit(shape) {
         y: fMinY,
         width: (fMaxX - fMinX) || 1,
         height: (fMaxY - fMinY) || 1
+      };
+    case 'arrow':
+      return {
+        x: Math.min(shape.startX, shape.x),
+        y: Math.min(shape.startY, shape.y),
+        width: Math.abs(shape.x - shape.startX) || 1,
+        height: Math.abs(shape.y - shape.startY) || 1
+      };
+    case 'diamond':
+    case 'triangle':
+    case 'ellipse':
+      return {
+        x: shape.width >= 0 ? shape.startX : shape.startX + shape.width,
+        y: shape.height >= 0 ? shape.startY : shape.startY + shape.height,
+        width: Math.abs(shape.width) || 1,
+        height: Math.abs(shape.height) || 1
       };
     default:
       return null;

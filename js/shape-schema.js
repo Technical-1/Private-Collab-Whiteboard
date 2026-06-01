@@ -13,5 +13,6 @@ export function sanitizeShape(shape) {
     fillColor: shape.fillColor ? safeColor(shape.fillColor) : shape.fillColor,
     strokeWidth: safeNumber(shape.strokeWidth, 2),
     fontSize: safeNumber(shape.fontSize, 20),
+    strokeStyle: ['solid', 'dashed', 'dotted'].includes(shape.strokeStyle) ? shape.strokeStyle : 'solid',
   };
 }
