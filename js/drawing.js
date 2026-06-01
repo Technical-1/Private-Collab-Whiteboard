@@ -17,6 +17,7 @@ import {
 } from './awareness.js';
 import { pruneTrail, MAX_TRAIL_AGE_MS } from './laser-trail.js';
 import { showAlert } from './modal.js';
+import { resolveAnchor, nearestAnchors } from './connector-geometry.js';
 import { ZOOM_MIN, ZOOM_MAX, HIT_TEST_THRESHOLD } from './config.js';
 
 let canvas = null;
@@ -109,6 +110,7 @@ let drawing = false;
 let startX = 0;
 let startY = 0;
 let currentTool = 'select';
+let connectorFromId = null;
 let laserTrail = [];        // ephemeral world-coord points {x,y,t}; never persisted
 let laserAnimating = false; // guards the fade animation rAF loop
 let currentStrokeStyle = 'solid';   // 'solid' | 'dashed' | 'dotted' (global setting)
@@ -492,6 +494,16 @@ function handleMouseDown(e) {
     return;
   }
 
+  // Connector - capture the source shape; the user then drags to a target to bind.
+  if (currentTool === 'connector') {
+    if (!canMutate()) return;
+    const shape = findShapeAtPoint(startX, startY);
+    // Only bind to real shapes, never another connector (avoids resolve recursion).
+    connectorFromId = (shape && shape.tool !== 'connector') ? shape.id : null;
+    if (connectorFromId) drawing = true;
+    return;
+  }
+
   // Handle freehand and brush eraser
   if (currentTool === 'freehand' || currentTool === 'highlight' || currentTool === 'eraser-brush') {
     if (!canMutate()) return; // Block in read-only mode
@@ -539,6 +551,28 @@ function handleMouseUp(e) {
 
   // Clear the live preview for other users
   clearCurrentDrawing();
+
+  // Connector - bind the source shape to the target shape under the release point.
+  if (currentTool === 'connector') {
+    if (connectorFromId) {
+      const target = findShapeAtPoint(x, y);
+      if (target && target.tool !== 'connector' && target.id !== connectorFromId) {
+        const fromShape = findShapeById(connectorFromId);
+        if (fromShape) {
+          const { from, to } = nearestAnchors(getShapeBounds(fromShape), getShapeBounds(target));
+          addDrawing({
+            tool: 'connector',
+            fromId: connectorFromId, toId: target.id,
+            fromAnchor: from, toAnchor: to,
+            strokeWidth, strokeStyle: 'solid', arrowHeads: 'end',
+          });
+        }
+      }
+    }
+    connectorFromId = null;
+    redrawCanvas();
+    return;
+  }
 
   // Handle freehand drawing
   if ((currentTool === 'freehand' || currentTool === 'highlight') && freehandPoints.length > 1) {
@@ -637,6 +671,24 @@ function handleMouseMove(e) {
     laserTrail = pruneTrail(laserTrail, now);
     updateLaser(laserTrail);
     redrawCanvas();
+    return;
+  }
+
+  // Connector creation preview: rubber-band arrow from the source shape to the cursor.
+  if (currentTool === 'connector') {
+    if (drawing && connectorFromId) {
+      const fromShape = findShapeById(connectorFromId);
+      if (fromShape) {
+        redrawCanvas();
+        const p1 = resolveAnchor(getShapeBounds(fromShape), 'c');
+        ctx.save();
+        ctx.scale(viewport.zoom, viewport.zoom);
+        ctx.translate(-viewport.x, -viewport.y);
+        ctx.globalAlpha = 0.6;
+        drawArrow(p1.x, p1.y, x, y, '#6366f1', strokeWidth, 'solid', 'end');
+        ctx.restore();
+      }
+    }
     return;
   }
 
@@ -2079,6 +2131,14 @@ function hitTestShape(x, y, shape, threshold = 8) {
       return x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + b.height;
     }
 
+    case 'connector': {
+      const f = findShapeById(shape.fromId), t = findShapeById(shape.toId);
+      if (!f || !t) return false;
+      const p1 = resolveAnchor(getShapeBounds(f), shape.fromAnchor);
+      const p2 = resolveAnchor(getShapeBounds(t), shape.toAnchor);
+      return pointToLineDistance(x, y, p1.x, p1.y, p2.x, p2.y) < sw;
+    }
+
     default:
       return false;
   }
@@ -2198,6 +2258,15 @@ export function getShapeBounds(shape) {
         width: Math.abs(shape.width),
         height: Math.abs(shape.height)
       };
+
+    case 'connector': {
+      const f = findShapeById(shape.fromId), t = findShapeById(shape.toId);
+      if (!f || !t) return { x: 0, y: 0, width: 0, height: 0 };
+      const p1 = resolveAnchor(getShapeBounds(f), shape.fromAnchor);
+      const p2 = resolveAnchor(getShapeBounds(t), shape.toAnchor);
+      return { x: Math.min(p1.x, p2.x), y: Math.min(p1.y, p2.y),
+               width: Math.abs(p2.x - p1.x), height: Math.abs(p2.y - p1.y) };
+    }
 
     default:
       return { x: 0, y: 0, width: 0, height: 0 };
@@ -2516,6 +2585,15 @@ function drawShape(item) {
     ctx.restore();
   } else if (tool === 'freehand' || tool === 'eraser') {
     drawFreehand(item.points, color, sw);
+  } else if (tool === 'connector') {
+    const fromShape = findShapeById(item.fromId);
+    const toShape = findShapeById(item.toId);
+    if (fromShape && toShape) {
+      const p1 = resolveAnchor(getShapeBounds(fromShape), item.fromAnchor);
+      const p2 = resolveAnchor(getShapeBounds(toShape), item.toAnchor);
+      drawArrow(p1.x, p1.y, p2.x, p2.y, color, sw, item.strokeStyle, item.arrowHeads);
+    }
+    // else: dangling endpoint — skip render (cleanup handled elsewhere)
   }
 
   if (legacyDash) ctx.setLineDash([]);
