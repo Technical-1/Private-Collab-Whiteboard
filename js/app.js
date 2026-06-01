@@ -222,6 +222,7 @@ async function main() {
     'draw-ellipse': 'ellipse',
     'tool-laser': 'laser',
     'tool-sticky': 'sticky',
+    'tool-connector': 'connector',
   };
 
   Object.entries(toolButtons).forEach(([btnId, toolName]) => {
@@ -672,7 +673,7 @@ function updateOptionsVisibility(toolName) {
 
   // Show/hide stroke options (hide for select, eraser-shape, and the laser
   // pointer — the laser uses a fixed width, so stroke controls are meaningless).
-  const hasStroke = !['select', 'eraser-shape', 'laser', 'sticky'].includes(toolName);
+  const hasStroke = !['select', 'eraser-shape', 'laser', 'sticky', 'connector'].includes(toolName);
   const strokeOption = document.querySelector('.stroke-option');
   if (strokeOption) {
     strokeOption.style.display = hasStroke ? 'flex' : 'none';
@@ -721,6 +722,7 @@ function setActiveTool(tool) {
     'ellipse': 'draw-ellipse',
     'laser': 'tool-laser',
     'sticky': 'tool-sticky',
+    'connector': 'tool-connector',
   };
 
   const btnId = toolToButtonId[tool];
@@ -819,6 +821,7 @@ function setupKeyboardShortcuts() {
         'o': 'ellipse',
         'q': 'laser',
         's': 'sticky',
+        'g': 'connector',
       };
 
       const tool = toolShortcuts[e.key.toLowerCase()];
@@ -1129,6 +1132,8 @@ function getShapeBoundsForFit(shape) {
         width: Math.abs(shape.width) || 1,
         height: Math.abs(shape.height) || 1
       };
+    case 'connector':
+      return null;
     default:
       return null;
   }

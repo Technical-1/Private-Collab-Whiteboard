@@ -59,7 +59,7 @@ export function safeNumber(value, fallback) {
 // untrusted peers via the shared CRDT and is interpolated into innerHTML when
 // building the shape-settings popup header, so any value outside this set
 // collapses to the inert literal 'shape'. Mirrors safeColor/safeNumber.
-const KNOWN_TOOLS = ['line', 'rect', 'circle', 'text', 'freehand', 'eraser', 'arrow', 'diamond', 'triangle', 'ellipse', 'highlight', 'sticky'];
+const KNOWN_TOOLS = ['line', 'rect', 'circle', 'text', 'freehand', 'eraser', 'arrow', 'diamond', 'triangle', 'ellipse', 'highlight', 'sticky', 'connector'];
 
 export function safeToolName(value) {
   return typeof value === 'string' && KNOWN_TOOLS.includes(value) ? value : 'shape';

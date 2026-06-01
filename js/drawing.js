@@ -17,6 +17,7 @@ import {
 } from './awareness.js';
 import { pruneTrail, MAX_TRAIL_AGE_MS } from './laser-trail.js';
 import { showAlert } from './modal.js';
+import { resolveAnchor, nearestAnchors, danglingConnectorIndices } from './connector-geometry.js';
 import { ZOOM_MIN, ZOOM_MAX, HIT_TEST_THRESHOLD } from './config.js';
 
 let canvas = null;
@@ -109,6 +110,7 @@ let drawing = false;
 let startX = 0;
 let startY = 0;
 let currentTool = 'select';
+let connectorFromId = null;
 let laserTrail = [];        // ephemeral world-coord points {x,y,t}; never persisted
 let laserAnimating = false; // guards the fade animation rAF loop
 let currentStrokeStyle = 'solid';   // 'solid' | 'dashed' | 'dotted' (global setting)
@@ -240,6 +242,7 @@ let boardsMapObserver = null;
 function resetDrawingState() {
   drawing = false;
   freehandPoints = [];
+  connectorFromId = null; // drop any half-started connector on board switch
 
   clearEditingTextBroadcast();
   if (editingTextId || textInput) {
@@ -375,6 +378,8 @@ export function setupDrawing(canvasEl, boardsMap, awarenessInstance, getBoardFn)
       laserTrail = [];
       clearLaser();
       isDragging = false; // cancel any in-progress drag so it can't be orphaned by a mid-drag tool switch
+      connectorFromId = null; // drop any half-started connector
+      drawing = false;
       currentTool = tool;
       clearSelection();
       updateCanvasCursor();
@@ -492,6 +497,16 @@ function handleMouseDown(e) {
     return;
   }
 
+  // Connector - capture the source shape; the user then drags to a target to bind.
+  if (currentTool === 'connector') {
+    if (!canMutate()) return;
+    const shape = findShapeAtPoint(startX, startY);
+    // Only bind to real shapes, never another connector (avoids resolve recursion).
+    connectorFromId = (shape && shape.tool !== 'connector') ? shape.id : null;
+    if (connectorFromId) drawing = true;
+    return;
+  }
+
   // Handle freehand and brush eraser
   if (currentTool === 'freehand' || currentTool === 'highlight' || currentTool === 'eraser-brush') {
     if (!canMutate()) return; // Block in read-only mode
@@ -539,6 +554,28 @@ function handleMouseUp(e) {
 
   // Clear the live preview for other users
   clearCurrentDrawing();
+
+  // Connector - bind the source shape to the target shape under the release point.
+  if (currentTool === 'connector') {
+    if (connectorFromId) {
+      const target = findShapeAtPoint(x, y);
+      if (target && target.tool !== 'connector' && target.id !== connectorFromId) {
+        const fromShape = findShapeById(connectorFromId);
+        if (fromShape) {
+          const { from, to } = nearestAnchors(getShapeBounds(fromShape), getShapeBounds(target));
+          addDrawing({
+            tool: 'connector',
+            fromId: connectorFromId, toId: target.id,
+            fromAnchor: from, toAnchor: to,
+            strokeWidth, strokeStyle: 'solid', arrowHeads: 'end',
+          });
+        }
+      }
+    }
+    connectorFromId = null;
+    redrawCanvas();
+    return;
+  }
 
   // Handle freehand drawing
   if ((currentTool === 'freehand' || currentTool === 'highlight') && freehandPoints.length > 1) {
@@ -637,6 +674,24 @@ function handleMouseMove(e) {
     laserTrail = pruneTrail(laserTrail, now);
     updateLaser(laserTrail);
     redrawCanvas();
+    return;
+  }
+
+  // Connector creation preview: rubber-band arrow from the source shape to the cursor.
+  if (currentTool === 'connector') {
+    if (drawing && connectorFromId) {
+      const fromShape = findShapeById(connectorFromId);
+      if (fromShape) {
+        redrawCanvas();
+        const p1 = resolveAnchor(getShapeBounds(fromShape), 'c');
+        ctx.save();
+        ctx.scale(viewport.zoom, viewport.zoom);
+        ctx.translate(-viewport.x, -viewport.y);
+        ctx.globalAlpha = 0.6;
+        drawArrow(p1.x, p1.y, x, y, '#6366f1', strokeWidth, 'solid', 'end');
+        ctx.restore();
+      }
+    }
     return;
   }
 
@@ -1792,6 +1847,9 @@ function moveShape(shapeId, dx, dy) {
   if (index === -1) return;
 
   const shape = board.get(index);
+  // Connectors have no own position — they follow their bound endpoints. Skip the
+  // wasteful delete+insert rewrite a drag would otherwise produce.
+  if (shape.tool === 'connector') return;
   const updated = { ...shape };
 
   // Update position based on shape type
@@ -1844,6 +1902,25 @@ function deleteShape(shapeId) {
       hoveredId = null;
     }
     hideShapeControls(true); // Force close popup when shape is deleted
+    // A connector bound to the just-deleted shape is now dangling; remove it so it
+    // doesn't linger as an invisible (skipped-render) shape. The deletion syncs to
+    // peers, so only the deleting client needs to run this.
+    removeDanglingConnectors();
+  }
+}
+
+// Remove any connector whose endpoint no longer exists on the current board.
+// Deletes by index from the end so earlier indices stay valid. Idempotent, so two
+// peers cleaning up the same dangling connector converge safely.
+function removeDanglingConnectors() {
+  if (!canMutate()) return;
+  const board = boards.get(getCurrentBoard());
+  if (!board) return;
+  // Indices come back descending, so deleting in order keeps the rest valid.
+  for (const i of danglingConnectorIndices(board.toArray())) {
+    // Respect the lock invariant the rest of the app upholds: a locked connector
+    // is never auto-removed (it just renders nothing while an endpoint is gone).
+    if (!board.get(i)?.locked) board.delete(i);
   }
 }
 
@@ -2079,6 +2156,16 @@ function hitTestShape(x, y, shape, threshold = 8) {
       return x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + b.height;
     }
 
+    case 'connector': {
+      const f = findShapeById(shape.fromId), t = findShapeById(shape.toId);
+      // Treat a connector-typed endpoint as missing: creation forbids it, but raw
+      // peer CRDT data has no schema, so this bounds recursion to depth 1.
+      if (!f || !t || f.tool === 'connector' || t.tool === 'connector') return false;
+      const p1 = resolveAnchor(getShapeBounds(f), shape.fromAnchor);
+      const p2 = resolveAnchor(getShapeBounds(t), shape.toAnchor);
+      return pointToLineDistance(x, y, p1.x, p1.y, p2.x, p2.y) < sw;
+    }
+
     default:
       return false;
   }
@@ -2198,6 +2285,17 @@ export function getShapeBounds(shape) {
         width: Math.abs(shape.width),
         height: Math.abs(shape.height)
       };
+
+    case 'connector': {
+      const f = findShapeById(shape.fromId), t = findShapeById(shape.toId);
+      // A connector-typed endpoint (only reachable via raw peer CRDT data) is
+      // treated as missing, bounding this recursion to depth 1.
+      if (!f || !t || f.tool === 'connector' || t.tool === 'connector') return { x: 0, y: 0, width: 0, height: 0 };
+      const p1 = resolveAnchor(getShapeBounds(f), shape.fromAnchor);
+      const p2 = resolveAnchor(getShapeBounds(t), shape.toAnchor);
+      return { x: Math.min(p1.x, p2.x), y: Math.min(p1.y, p2.y),
+               width: Math.abs(p2.x - p1.x), height: Math.abs(p2.y - p1.y) };
+    }
 
     default:
       return { x: 0, y: 0, width: 0, height: 0 };
@@ -2516,6 +2614,17 @@ function drawShape(item) {
     ctx.restore();
   } else if (tool === 'freehand' || tool === 'eraser') {
     drawFreehand(item.points, color, sw);
+  } else if (tool === 'connector') {
+    const fromShape = findShapeById(item.fromId);
+    const toShape = findShapeById(item.toId);
+    // Skip if an endpoint is missing OR is itself a connector (raw peer CRDT data
+    // could reference one) — prevents resolve recursion past depth 1.
+    if (fromShape && toShape && fromShape.tool !== 'connector' && toShape.tool !== 'connector') {
+      const p1 = resolveAnchor(getShapeBounds(fromShape), item.fromAnchor);
+      const p2 = resolveAnchor(getShapeBounds(toShape), item.toAnchor);
+      drawArrow(p1.x, p1.y, p2.x, p2.y, color, sw, item.strokeStyle, item.arrowHeads);
+    }
+    // else: dangling endpoint — skip render (cleanup handled elsewhere)
   }
 
   if (legacyDash) ctx.setLineDash([]);
