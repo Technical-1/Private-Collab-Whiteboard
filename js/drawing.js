@@ -17,7 +17,7 @@ import {
 } from './awareness.js';
 import { pruneTrail, MAX_TRAIL_AGE_MS } from './laser-trail.js';
 import { showAlert } from './modal.js';
-import { resolveAnchor, nearestAnchors } from './connector-geometry.js';
+import { resolveAnchor, nearestAnchors, isDangling } from './connector-geometry.js';
 import { ZOOM_MIN, ZOOM_MAX, HIT_TEST_THRESHOLD } from './config.js';
 
 let canvas = null;
@@ -1901,6 +1901,27 @@ function deleteShape(shapeId) {
       hoveredId = null;
     }
     hideShapeControls(true); // Force close popup when shape is deleted
+    // A connector bound to the just-deleted shape is now dangling; remove it so it
+    // doesn't linger as an invisible (skipped-render) shape. The deletion syncs to
+    // peers, so only the deleting client needs to run this.
+    removeDanglingConnectors();
+  }
+}
+
+// Remove any connector whose endpoint no longer exists on the current board.
+// Deletes by index from the end so earlier indices stay valid. Idempotent, so two
+// peers cleaning up the same dangling connector converge safely.
+function removeDanglingConnectors() {
+  if (!canMutate()) return;
+  const board = boards.get(getCurrentBoard());
+  if (!board) return;
+  const items = board.toArray();
+  const ids = new Set(items.map(s => s.id));
+  for (let i = items.length - 1; i >= 0; i--) {
+    const s = items[i];
+    if (s.tool === 'connector' && isDangling(s, ids)) {
+      board.delete(i, 1);
+    }
   }
 }
 
