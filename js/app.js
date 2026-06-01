@@ -11,6 +11,7 @@ import { setupBoardManager, setBoardsContainer } from './boards.js';
 import {
   getRoomIdFromUrl,
   getCapabilityFromUrl,
+  parseCapabilityHash,
   getShareableLink,
   copyToClipboard,
   isEncryptedRoom,
@@ -65,6 +66,20 @@ async function main() {
   // Get room ID from URL
   const roomId = getRoomIdFromUrl();
   if (!roomId) {
+    window.location.href = '/';
+    return;
+  }
+
+  // Reject a present-but-unparseable fragment before going further. A missing
+  // fragment (open room) is fine; only a *tampered/truncated* one triggers this.
+  // getCapabilityFromUrl() below is kept as a non-throwing fallback for helpers.
+  try {
+    parseCapabilityHash(window.location.hash);
+  } catch {
+    await showAlert(
+      'Invalid Link',
+      'This board link is invalid or has been tampered with. Ask the owner for a fresh link.'
+    );
     window.location.href = '/';
     return;
   }

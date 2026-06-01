@@ -96,11 +96,27 @@ export async function rotateCapability(ownerCap, newPassword) {
   return { ...ownerCap, role: 'owner', epoch, password: newPassword, pkE, skE, cert };
 }
 
-/** Read the capability from the URL hash (null for unencrypted rooms). */
+/**
+ * Parse a URL hash into a capability.
+ *  - no fragment        -> null  (intentional open room)
+ *  - present but bad    -> THROWS (tampered/truncated link; do not silently
+ *                          fall back to open-room editor mode)
+ *  - present and valid  -> capability object
+ */
+export function parseCapabilityHash(hash) {
+  if (!hash || hash.length <= 1) return null;
+  const cap = decodeCapabilityToken(hash.substring(1));
+  if (cap === null) throw new Error('Invalid or tampered capability link');
+  return cap;
+}
+
+/** Non-throwing read used by the helper graph (null for open OR malformed). */
 export function getCapabilityFromUrl() {
-  const hash = window.location.hash;
-  if (hash && hash.length > 1) return decodeCapabilityToken(hash.substring(1));
-  return null;
+  try {
+    return parseCapabilityHash(window.location.hash);
+  } catch {
+    return null;
+  }
 }
 
 /** @returns {'owner'|'edit'|'view'} */

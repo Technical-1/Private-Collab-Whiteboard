@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mintRoomCapability, encodeCapabilityHash, decodeCapabilityToken, rotateCapability, joinRoomPath } from '../js/room-manager.js';
+import { mintRoomCapability, encodeCapabilityHash, decodeCapabilityToken, rotateCapability, joinRoomPath, parseCapabilityHash } from '../js/room-manager.js';
 import { verifyCert } from '../js/room-cert.js';
 import { verifyCert as vcert } from '../js/room-cert.js';
 import { PBKDF2_ITERATIONS, LEGACY_PBKDF2_ITERATIONS, MAX_PBKDF2_ITERATIONS } from '../js/config.js';
@@ -141,5 +141,22 @@ describe('joinRoomPath (capability rooms are link-join only)', () => {
   it('trims and returns null for empty input', () => {
     expect(joinRoomPath('   ')).toBeNull();
     expect(joinRoomPath('')).toBeNull();
+  });
+});
+
+describe('parseCapabilityHash', () => {
+  it('returns null when there is no fragment (open room)', () => {
+    expect(parseCapabilityHash('')).toBeNull();
+    expect(parseCapabilityHash('#')).toBeNull();
+  });
+
+  it('throws when a fragment is present but cannot be decoded', () => {
+    expect(() => parseCapabilityHash('#not-a-valid-token')).toThrow();
+  });
+
+  it('returns the capability for a valid fragment', async () => {
+    const cap = await mintRoomCapability('pw');
+    const hash = '#' + encodeCapabilityHash(cap, 'view');
+    expect(parseCapabilityHash(hash).role).toBe('view');
   });
 });
