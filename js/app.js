@@ -1080,10 +1080,10 @@ function checkBrowserCompatibility() {
   if (missing.length > 0) {
     const message = `Your browser is missing required features:\n\n• ${missing.join('\n• ')}\n\nPlease use a modern browser like Chrome, Firefox, Safari, or Edge.`;
     document.body.innerHTML = `
-      <div style="display: flex; align-items: center; justify-content: center; height: 100vh; padding: 20px; text-align: center; font-family: system-ui, sans-serif;">
-        <div style="max-width: 500px;">
-          <h2 style="color: #ef4444; margin-bottom: 16px;">Browser Not Supported</h2>
-          <p style="color: #71717a; white-space: pre-line;">${message}</p>
+      <div class="browser-unsupported">
+        <div class="browser-unsupported__inner">
+          <h2 class="browser-unsupported__title">Browser Not Supported</h2>
+          <p class="browser-unsupported__msg">${message}</p>
         </div>
       </div>
     `;
