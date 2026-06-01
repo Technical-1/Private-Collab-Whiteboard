@@ -4,7 +4,7 @@ import { initializeAwareness, updateLaser, clearLaser, getRemoteLasers } from '.
 // The test environment (Node) has no usable localStorage; stub it so
 // initializeAwareness can call generateUserId() without throwing.
 beforeAll(() => {
-  if (typeof localStorage?.getItem !== 'function') {
+  if (typeof localStorage === 'undefined' || typeof localStorage.getItem !== 'function') {
     const store = {};
     globalThis.localStorage = {
       getItem: k => store[k] ?? null,
