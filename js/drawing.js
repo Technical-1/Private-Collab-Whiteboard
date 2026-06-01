@@ -371,6 +371,7 @@ export function setupDrawing(canvasEl, boardsMap, awarenessInstance, getBoardFn)
     redraw: () => redrawCanvas(),
     subscribeToBoard,
     setStrokeWidth: (width) => { strokeWidth = width; },
+    setStrokeStyle: (style) => { currentStrokeStyle = style; },
     setFillEnabled: (enabled) => { fillEnabled = enabled; },
     setFillColor: (color) => { fillColor = color; },
     setFontSize: (size) => { fontSize = size; },
@@ -517,7 +518,8 @@ function handleMouseUp(e) {
     addDrawing({
       tool: 'freehand',
       points: [...freehandPoints],
-      strokeWidth: strokeWidth
+      strokeWidth: strokeWidth,
+      strokeStyle: currentStrokeStyle
     });
     freehandPoints = [];
     redrawCanvas();
@@ -545,7 +547,8 @@ function handleMouseUp(e) {
       startY,
       x,
       y,
-      strokeWidth: strokeWidth
+      strokeWidth: strokeWidth,
+      strokeStyle: currentStrokeStyle
     });
   } else if (currentTool === 'rect') {
     addDrawing({
@@ -555,6 +558,7 @@ function handleMouseUp(e) {
       width: x - startX,
       height: y - startY,
       strokeWidth: strokeWidth,
+      strokeStyle: currentStrokeStyle,
       fillColor: fillEnabled ? fillColor : null
     });
   } else if (currentTool === 'circle') {
@@ -565,6 +569,7 @@ function handleMouseUp(e) {
       startY,
       radius,
       strokeWidth: strokeWidth,
+      strokeStyle: currentStrokeStyle,
       fillColor: fillEnabled ? fillColor : null
     });
   } else if (currentTool === 'arrow') {
@@ -2338,6 +2343,11 @@ function drawShape(item) {
 
   ctx.lineWidth = sw;
 
+  // Legacy tools delegate to drawers that don't self-manage dashing; apply it here.
+  // (arrow/diamond/triangle/ellipse set their own dash inside their drawers.)
+  const legacyDash = tool === 'line' || tool === 'rect' || tool === 'circle' || tool === 'freehand';
+  if (legacyDash) ctx.setLineDash(dashPattern(item.strokeStyle).map(d => d / viewport.zoom));
+
   if (tool === 'line') {
     drawLine(item.startX, item.startY, item.x, item.y, color);
   } else if (tool === 'rect') {
@@ -2357,6 +2367,8 @@ function drawShape(item) {
   } else if (tool === 'freehand' || tool === 'eraser') {
     drawFreehand(item.points, color, sw);
   }
+
+  if (legacyDash) ctx.setLineDash([]);
 }
 
 // Draw shape overlay in world space (selection box)

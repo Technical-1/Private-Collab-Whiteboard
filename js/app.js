@@ -234,6 +234,15 @@ async function main() {
     };
   });
 
+  // Wire up stroke style buttons
+  document.querySelectorAll('.style-btn').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.style-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      drawingController.setStrokeStyle(btn.dataset.style);
+    };
+  });
+
   // Wire up drawing options
   const strokeWidthInput = document.getElementById('stroke-width');
   const strokeValueSpan = document.getElementById('stroke-value');
