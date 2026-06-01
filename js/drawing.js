@@ -242,6 +242,7 @@ let boardsMapObserver = null;
 function resetDrawingState() {
   drawing = false;
   freehandPoints = [];
+  connectorFromId = null; // drop any half-started connector on board switch
 
   clearEditingTextBroadcast();
   if (editingTextId || textInput) {
@@ -1917,7 +1918,9 @@ function removeDanglingConnectors() {
   if (!board) return;
   // Indices come back descending, so deleting in order keeps the rest valid.
   for (const i of danglingConnectorIndices(board.toArray())) {
-    board.delete(i);
+    // Respect the lock invariant the rest of the app upholds: a locked connector
+    // is never auto-removed (it just renders nothing while an endpoint is gone).
+    if (!board.get(i)?.locked) board.delete(i);
   }
 }
 
