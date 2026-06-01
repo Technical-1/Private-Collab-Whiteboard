@@ -372,6 +372,7 @@ export function setupDrawing(canvasEl, boardsMap, awarenessInstance, getBoardFn)
     setTool: (tool) => {
       laserTrail = [];
       clearLaser();
+      isDragging = false; // cancel any in-progress drag so it can't be orphaned by a mid-drag tool switch
       currentTool = tool;
       clearSelection();
       updateCanvasCursor();
