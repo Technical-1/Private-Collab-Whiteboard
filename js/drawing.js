@@ -261,6 +261,8 @@ function resetDrawingState() {
   dragStartY = 0;
   dragOffsetX = 0;
   dragOffsetY = 0;
+  dragDX = 0;
+  dragDY = 0;
 
   clearCurrentDrawing();
   hideShapeControls(true);
@@ -933,6 +935,8 @@ function handleTouchStart(e) {
     }
     if (isDragging) {
       isDragging = false;
+      dragDX = 0;
+      dragDY = 0;
     }
   }
 }
@@ -2752,12 +2756,18 @@ function drawShapePreview(shape, dx, dy) {
     drawFreehand(movedPoints, shape.color, shape.strokeWidth || 2);
   } else if (shape.tool === 'connector') {
     // A connector has no own coordinates; it's anchored to its endpoints. Draw it
-    // at its resolved position (it does not move independently of its shapes).
+    // at its resolved position. If a dragged endpoint is selected, offset that
+    // anchor by the live drag delta — same as drawShape — so this ghost overlaps
+    // the live render in redrawCanvas instead of trailing at the pre-drag spot.
     const fromShape = findShapeById(shape.fromId);
     const toShape = findShapeById(shape.toId);
     if (fromShape && toShape && fromShape.tool !== 'connector' && toShape.tool !== 'connector') {
       const p1 = resolveAnchor(getShapeBounds(fromShape), shape.fromAnchor);
       const p2 = resolveAnchor(getShapeBounds(toShape), shape.toAnchor);
+      if (isDragging) {
+        if (selectedIds.has(shape.fromId)) { p1.x += dragDX; p1.y += dragDY; }
+        if (selectedIds.has(shape.toId)) { p2.x += dragDX; p2.y += dragDY; }
+      }
       drawArrow(p1.x, p1.y, p2.x, p2.y, shape.color, shape.strokeWidth || 2, shape.strokeStyle, shape.arrowHeads);
     }
   }
