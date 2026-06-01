@@ -2056,6 +2056,24 @@ export function getShapeBounds(shape) {
       };
     }
 
+    case 'arrow':
+      return {
+        x: Math.min(shape.startX, shape.x),
+        y: Math.min(shape.startY, shape.y),
+        width: Math.abs(shape.x - shape.startX),
+        height: Math.abs(shape.y - shape.startY)
+      };
+
+    case 'diamond':
+    case 'triangle':
+    case 'ellipse':
+      return {
+        x: Math.min(shape.startX, shape.startX + shape.width),
+        y: Math.min(shape.startY, shape.startY + shape.height),
+        width: Math.abs(shape.width),
+        height: Math.abs(shape.height)
+      };
+
     default:
       return { x: 0, y: 0, width: 0, height: 0 };
   }
