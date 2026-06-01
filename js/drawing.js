@@ -2288,8 +2288,9 @@ function redrawCanvas() {
   let hasOverlay = false;
 
   board.forEach((item) => {
-    // Skip if this is the shape being edited
-    if (editingTextId === item.id && item.tool === 'text') return;
+    // Skip the committed shape being edited (its live state is drawn in
+    // drawLocalTextPreview). Applies to both text and sticky notes.
+    if (editingTextId === item.id && (item.tool === 'text' || item.tool === 'sticky')) return;
 
     drawShape(item);
 
@@ -2438,6 +2439,18 @@ function drawLocalTextPreview() {
   if (!textInput) return;
 
   const text = textInput.value;
+
+  // Editing a sticky: redraw the note body + live text (the committed note is
+  // skipped during edit). Render even when text is empty so the body stays visible.
+  if (editingTextId) {
+    const shape = findShapeById(editingTextId);
+    if (shape && shape.tool === 'sticky') {
+      const b = getShapeBounds(shape);
+      drawSticky(b.x, b.y, b.width, b.height, shape.fillColor, text, shape.fontSize);
+      return;
+    }
+  }
+
   if (!text) return;
 
   // Handle new text creation
