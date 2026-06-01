@@ -1,5 +1,8 @@
 // Greedy word wrap. `measure(str)` returns the rendered pixel width of str.
 // Words longer than maxWidth are hard-broken character-by-character.
+// Note: hard newlines are treated as ordinary whitespace (split on /\s+/), so
+// callers that need to preserve `\n` must split on it and call wrapText per line.
+// (The sticky-note editor is a single-line <input>, so notes carry no newlines.)
 export function wrapText(measure, text, maxWidth) {
   if (!text || typeof text !== 'string') return [];
   const lines = [];

@@ -17,4 +17,12 @@ describe('wrapText', () => {
     expect(wrapText(measure, '', 100)).toEqual([]);
     expect(wrapText(measure, null, 100)).toEqual([]);
   });
+  it('pushes a single char wider than maxWidth as-is (no infinite loop)', () => {
+    // 1 char = 10px, maxWidth 5: the `chunk.length > 1` guard must prevent spinning
+    expect(wrapText(measure, 'x', 5)).toEqual(['x']);
+  });
+  it('merges a hard-break remainder with the next word when it fits', () => {
+    // "abcdefg hi" @60: hard-break -> "abcdef" + remainder "g"; then "g hi" (40) <= 60
+    expect(wrapText(measure, 'abcdefg hi', 60)).toEqual(['abcdef', 'g hi']);
+  });
 });
