@@ -20,3 +20,9 @@ describe('safeToolName — Phase 2', () => {
     expect(safeToolName('laser')).toBe('shape');
   });
 });
+
+describe('safeToolName — Phase 3', () => {
+  it('passes through "sticky"', () => {
+    expect(safeToolName('sticky')).toBe('sticky');
+  });
+});
