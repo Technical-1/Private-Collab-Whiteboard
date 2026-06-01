@@ -2151,11 +2151,12 @@ export function getShapeBounds(shape) {
         height: Math.abs(shape.y - shape.startY)
       };
 
-    // diamond/triangle/ellipse are all bbox-based (startX,startY,width,height) —
+    // diamond/triangle/ellipse/sticky are all bbox-based (startX,startY,width,height) —
     // note ellipse is intentionally NOT center+radius like 'circle'.
     case 'diamond':
     case 'triangle':
     case 'ellipse':
+    case 'sticky':
       return {
         x: Math.min(shape.startX, shape.startX + shape.width),
         y: Math.min(shape.startY, shape.startY + shape.height),

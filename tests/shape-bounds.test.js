@@ -31,3 +31,14 @@ describe('getShapeBounds — Phase 1 shapes', () => {
     expect(b).toMatchObject({ x: 2, y: 1, width: 10, height: 8 });
   });
 });
+
+describe('getShapeBounds — sticky', () => {
+  it('returns the note rect', () => {
+    const b = getShapeBounds({ tool: 'sticky', startX: 5, startY: 5, width: 180, height: 180 });
+    expect(b).toMatchObject({ x: 5, y: 5, width: 180, height: 180 });
+  });
+  it('normalizes negative width/height', () => {
+    const b = getShapeBounds({ tool: 'sticky', startX: 185, startY: 185, width: -180, height: -180 });
+    expect(b).toMatchObject({ x: 5, y: 5, width: 180, height: 180 });
+  });
+});
