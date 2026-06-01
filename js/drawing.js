@@ -1206,8 +1206,9 @@ function showShapeSettingsPopup(shape, bounds) {
   // safe. (Replaces the scattered safeColor/safeNumber/safeToolName calls.)
   shape = sanitizeShape(shape) || shape;
 
-  // Determine which controls to show based on shape type
-  const hasStroke = shape.tool !== 'text';
+  // Determine which controls to show based on shape type. Sticky notes have no
+  // stroke (drawSticky never strokes) — only their fill (note color) is editable.
+  const hasStroke = shape.tool !== 'text' && shape.tool !== 'sticky';
   const hasFill = ['rect', 'circle', 'diamond', 'triangle', 'ellipse', 'sticky'].includes(shape.tool);
   const isText = shape.tool === 'text';
 
