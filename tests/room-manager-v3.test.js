@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mintRoomCapability, encodeCapabilityHash, decodeCapabilityToken, rotateCapability } from '../js/room-manager.js';
+import { mintRoomCapability, encodeCapabilityHash, decodeCapabilityToken, rotateCapability, joinRoomPath } from '../js/room-manager.js';
 import { verifyCert } from '../js/room-cert.js';
 import { verifyCert as vcert } from '../js/room-cert.js';
 import { PBKDF2_ITERATIONS, LEGACY_PBKDF2_ITERATIONS, MAX_PBKDF2_ITERATIONS } from '../js/config.js';
@@ -126,5 +126,20 @@ describe('capability per-room salt', () => {
     delete obj.salt;
     const legacy = btoa(encodeURIComponent(JSON.stringify(obj)));
     expect(decodeCapabilityToken(legacy).salt).toBeNull();
+  });
+});
+
+describe('joinRoomPath (capability rooms are link-join only)', () => {
+  it('builds a bare /room/<id> path and never embeds a capability', () => {
+    expect(joinRoomPath('abc123')).toBe('/room/abc123');
+  });
+
+  it('ignores any password argument (no minted owner token in the path)', () => {
+    expect(joinRoomPath('abc123', 'secret')).toBe('/room/abc123');
+  });
+
+  it('trims and returns null for empty input', () => {
+    expect(joinRoomPath('   ')).toBeNull();
+    expect(joinRoomPath('')).toBeNull();
   });
 });

@@ -118,15 +118,19 @@ export async function createRoom(password = null) {
   }
 }
 
-export async function joinRoom(roomId, password = null) {
-  if (!roomId || !roomId.trim()) return;
-  const cleanRoomId = roomId.trim();
-  if (password) {
-    const cap = await mintRoomCapability(password);
-    window.location.href = `/room/${cleanRoomId}#${encodeCapabilityHash(cap, 'owner')}`;
-  } else {
-    window.location.href = `/room/${cleanRoomId}`;
-  }
+// Capability (password-protected) rooms can ONLY be joined via a shared link
+// that already carries the room's cert + keys. Deriving a new capability from
+// just roomId+password would mint an unrelated owner keypair and drop the user
+// into an isolated ghost room. So joining is always a bare navigation; the
+// password (if any) is intentionally ignored here.
+export function joinRoomPath(roomId, _password = null) {
+  if (!roomId || !roomId.trim()) return null;
+  return `/room/${roomId.trim()}`;
+}
+
+export function joinRoom(roomId, password = null) {
+  const path = joinRoomPath(roomId, password);
+  if (path) window.location.href = path;
 }
 
 /**
