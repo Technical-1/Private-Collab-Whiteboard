@@ -103,7 +103,7 @@ let drawing = false;
 let startX = 0;
 let startY = 0;
 let currentTool = 'select';
-let currentStrokeStyle = 'solid';   // 'solid' | 'dashed' | 'dotted' — UI setter added in a later task
+let currentStrokeStyle = 'solid';   // 'solid' | 'dashed' | 'dotted' (global setting)
 let currentArrowHeads = 'end';      // 'end' | 'both'
 let currentBoardObserver = null;
 // The exact Y.Array instance we're currently observing. The boards Y.Map can
@@ -641,7 +641,7 @@ function handleMouseMove(e) {
         tool: 'line',
         startX, startY,
         x, y,
-        strokeWidth
+        strokeWidth, strokeStyle: currentStrokeStyle,
       });
     } else if (currentTool === 'rect') {
       updateCurrentDrawing({
@@ -649,7 +649,7 @@ function handleMouseMove(e) {
         startX, startY,
         width: x - startX,
         height: y - startY,
-        strokeWidth,
+        strokeWidth, strokeStyle: currentStrokeStyle,
         fillColor: fillEnabled ? fillColor : null
       });
     } else if (currentTool === 'circle') {
@@ -658,7 +658,7 @@ function handleMouseMove(e) {
         tool: 'circle',
         startX, startY,
         radius,
-        strokeWidth,
+        strokeWidth, strokeStyle: currentStrokeStyle,
         fillColor: fillEnabled ? fillColor : null
       });
     } else if (currentTool === 'arrow') {
@@ -2289,11 +2289,17 @@ function drawRemoteDrawings() {
       const color = drawing.tool === 'eraser' ? '#FFFFFF' : drawing.color;
       drawFreehand(drawing.points, color, drawing.strokeWidth || 2);
     } else if (drawing.tool === 'line') {
+      ctx.setLineDash(dashPattern(drawing.strokeStyle).map(d => d / viewport.zoom));
       drawLine(drawing.startX, drawing.startY, drawing.x, drawing.y, drawing.color);
+      ctx.setLineDash([]);
     } else if (drawing.tool === 'rect') {
+      ctx.setLineDash(dashPattern(drawing.strokeStyle).map(d => d / viewport.zoom));
       drawRect(drawing.startX, drawing.startY, drawing.width, drawing.height, drawing.color, drawing.fillColor);
+      ctx.setLineDash([]);
     } else if (drawing.tool === 'circle') {
+      ctx.setLineDash(dashPattern(drawing.strokeStyle).map(d => d / viewport.zoom));
       drawCircle(drawing.startX, drawing.startY, drawing.radius, drawing.color, drawing.fillColor);
+      ctx.setLineDash([]);
     } else if (drawing.tool === 'arrow') {
       drawArrow(drawing.startX, drawing.startY, drawing.x, drawing.y, drawing.color, drawing.strokeWidth || 2, drawing.strokeStyle, drawing.arrowHeads);
     } else if (drawing.tool === 'diamond' || drawing.tool === 'triangle') {
@@ -2452,12 +2458,18 @@ function drawShapeCreationPreview(x, y) {
   ctx.lineWidth = strokeWidth;
 
   if (currentTool === 'line') {
+    ctx.setLineDash(dashPattern(currentStrokeStyle).map(d => d / viewport.zoom));
     drawLine(startX, startY, x, y, color);
+    ctx.setLineDash([]);
   } else if (currentTool === 'rect') {
+    ctx.setLineDash(dashPattern(currentStrokeStyle).map(d => d / viewport.zoom));
     drawRect(startX, startY, x - startX, y - startY, color, fillEnabled ? fillColor : null);
+    ctx.setLineDash([]);
   } else if (currentTool === 'circle') {
     const radius = Math.sqrt(Math.pow(x - startX, 2) + Math.pow(y - startY, 2));
+    ctx.setLineDash(dashPattern(currentStrokeStyle).map(d => d / viewport.zoom));
     drawCircle(startX, startY, radius, color, fillEnabled ? fillColor : null);
+    ctx.setLineDash([]);
   } else if (currentTool === 'arrow') {
     drawArrow(startX, startY, x, y, color, strokeWidth, currentStrokeStyle, currentArrowHeads);
   } else if (currentTool === 'diamond' || currentTool === 'triangle') {
