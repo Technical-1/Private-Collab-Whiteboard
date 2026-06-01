@@ -767,7 +767,7 @@ function handleDoubleClick(e) {
   const world = screenToWorld(screenX, screenY);
 
   const shape = findShapeAtPoint(world.x, world.y);
-  if (shape && shape.tool === 'text') {
+  if (shape && (shape.tool === 'text' || shape.tool === 'sticky')) {
     startTextEditing(shape);
   }
 }
@@ -1662,7 +1662,10 @@ function startTextEditing(shape) {
   broadcastEditingText(shape.id);
 
   // Convert world coordinates to screen coordinates for input positioning
-  const screenPos = worldToScreen(shape.x, shape.y);
+  // Sticky notes anchor on their top-left (startX/startY); text shapes use x/y.
+  const anchorX = shape.tool === 'sticky' ? shape.startX : shape.x;
+  const anchorY = shape.tool === 'sticky' ? shape.startY : shape.y;
+  const screenPos = worldToScreen(anchorX, anchorY);
   const scaledFontSize = (shape.fontSize || 20) * viewport.zoom;
 
   // Clamp position to keep input within container bounds
@@ -1684,7 +1687,8 @@ function startTextEditing(shape) {
   textInput.style.fontSize = `${scaledFontSize}px`;
   textInput.style.fontFamily = shape.fontFamily || 'Arial';
   textInput.style.maxWidth = `${containerRect.width - margin * 2}px`;
-  textInput.style.transform = 'translateY(-100%)'; // Position above the text baseline
+  // Text sits above its baseline; a sticky's anchor is its top edge, so place the input there.
+  textInput.style.transform = shape.tool === 'sticky' ? 'none' : 'translateY(-100%)';
 
   // Redraw on input to show live preview
   textInput.addEventListener('input', () => {
@@ -1743,13 +1747,15 @@ function updateTextInputPosition() {
   const shape = findShapeById(editingTextId);
   if (!shape) return;
 
-  const screenPos = worldToScreen(shape.x, shape.y);
+  const anchorX = shape.tool === 'sticky' ? shape.startX : shape.x;
+  const anchorY = shape.tool === 'sticky' ? shape.startY : shape.y;
+  const screenPos = worldToScreen(anchorX, anchorY);
   const scaledFontSize = (shape.fontSize || 20) * viewport.zoom;
 
   textInput.style.left = `${screenPos.x}px`;
   textInput.style.top = `${screenPos.y}px`;
   textInput.style.fontSize = `${scaledFontSize}px`;
-  textInput.style.transform = 'translateY(-100%)';
+  textInput.style.transform = shape.tool === 'sticky' ? 'none' : 'translateY(-100%)';
 }
 
 function finishTextEditing() {
