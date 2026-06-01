@@ -217,6 +217,8 @@ let dragStartX = 0;
 let dragStartY = 0;
 let dragOffsetX = 0;
 let dragOffsetY = 0;
+let dragDX = 0; // live drag delta in world units, valid only while isDragging
+let dragDY = 0;
 
 // Freehand drawing state
 let freehandPoints = [];
@@ -378,6 +380,8 @@ export function setupDrawing(canvasEl, boardsMap, awarenessInstance, getBoardFn)
       laserTrail = [];
       clearLaser();
       isDragging = false; // cancel any in-progress drag so it can't be orphaned by a mid-drag tool switch
+      dragDX = 0;
+      dragDY = 0;
       connectorFromId = null; // drop any half-started connector
       drawing = false;
       currentTool = tool;
@@ -535,6 +539,8 @@ function handleMouseUp(e) {
   // Handle drag end
   if (isDragging && selectedIds.size > 0) {
     isDragging = false;
+    dragDX = 0;
+    dragDY = 0;
     document.getElementById('canvas-container').classList.remove('dragging');
 
     const dx = x - dragStartX;
@@ -697,14 +703,13 @@ function handleMouseMove(e) {
 
   // Handle dragging
   if (isDragging && selectedIds.size > 0) {
-    // Draw preview of dragged shapes
+    dragDX = x - dragStartX;
+    dragDY = y - dragStartY;
     redrawCanvas();
-    const dx = x - dragStartX;
-    const dy = y - dragStartY;
     selectedIds.forEach(id => {
       const shape = findShapeById(id);
       if (shape) {
-        drawShapePreview(shape, dx, dy);
+        drawShapePreview(shape, dragDX, dragDY);
       }
     });
     return;
@@ -2658,6 +2663,13 @@ function drawShape(item) {
     if (fromShape && toShape && fromShape.tool !== 'connector' && toShape.tool !== 'connector') {
       const p1 = resolveAnchor(getShapeBounds(fromShape), item.fromAnchor);
       const p2 = resolveAnchor(getShapeBounds(toShape), item.toAnchor);
+      // While dragging, an endpoint that is part of the selection hasn't been
+      // committed to the CRDT yet — offset its anchor by the live drag delta so
+      // the connector visually follows the ghost instead of lagging behind.
+      if (isDragging) {
+        if (selectedIds.has(item.fromId)) { p1.x += dragDX; p1.y += dragDY; }
+        if (selectedIds.has(item.toId)) { p2.x += dragDX; p2.y += dragDY; }
+      }
       drawArrow(p1.x, p1.y, p2.x, p2.y, color, sw, item.strokeStyle, item.arrowHeads);
     }
     // else: dangling endpoint — skip render (cleanup handled elsewhere)
@@ -2738,6 +2750,16 @@ function drawShapePreview(shape, dx, dy) {
   } else if (shape.tool === 'freehand' || shape.tool === 'eraser') {
     const movedPoints = shape.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
     drawFreehand(movedPoints, shape.color, shape.strokeWidth || 2);
+  } else if (shape.tool === 'connector') {
+    // A connector has no own coordinates; it's anchored to its endpoints. Draw it
+    // at its resolved position (it does not move independently of its shapes).
+    const fromShape = findShapeById(shape.fromId);
+    const toShape = findShapeById(shape.toId);
+    if (fromShape && toShape && fromShape.tool !== 'connector' && toShape.tool !== 'connector') {
+      const p1 = resolveAnchor(getShapeBounds(fromShape), shape.fromAnchor);
+      const p2 = resolveAnchor(getShapeBounds(toShape), shape.toAnchor);
+      drawArrow(p1.x, p1.y, p2.x, p2.y, shape.color, shape.strokeWidth || 2, shape.strokeStyle, shape.arrowHeads);
+    }
   }
 
   ctx.restore();
