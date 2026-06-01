@@ -400,7 +400,7 @@ function updateCanvasCursor() {
     container.classList.add('tool-select');
   } else if (currentTool === 'eraser-shape') {
     container.classList.add('tool-eraser');
-  } else if (currentTool === 'freehand' || currentTool === 'eraser-brush') {
+  } else if (currentTool === 'freehand' || currentTool === 'highlight' || currentTool === 'eraser-brush') {
     container.classList.add('tool-freehand');
   }
 }
@@ -476,7 +476,7 @@ function handleMouseDown(e) {
   }
 
   // Handle freehand and brush eraser
-  if (currentTool === 'freehand' || currentTool === 'eraser-brush') {
+  if (currentTool === 'freehand' || currentTool === 'highlight' || currentTool === 'eraser-brush') {
     if (!canMutate()) return; // Block in read-only mode
     drawing = true;
     freehandPoints = [{ x: startX, y: startY }];
@@ -524,12 +524,12 @@ function handleMouseUp(e) {
   clearCurrentDrawing();
 
   // Handle freehand drawing
-  if (currentTool === 'freehand' && freehandPoints.length > 1) {
+  if ((currentTool === 'freehand' || currentTool === 'highlight') && freehandPoints.length > 1) {
     addDrawing({
-      tool: 'freehand',
+      tool: currentTool, // 'freehand' or 'highlight'
       points: [...freehandPoints],
       strokeWidth: strokeWidth,
-      strokeStyle: currentStrokeStyle
+      strokeStyle: currentTool === 'freehand' ? currentStrokeStyle : 'solid'
     });
     freehandPoints = [];
     redrawCanvas();
@@ -639,12 +639,12 @@ function handleMouseMove(e) {
   }
 
   // Handle freehand drawing preview
-  if (drawing && (currentTool === 'freehand' || currentTool === 'eraser-brush')) {
+  if (drawing && (currentTool === 'freehand' || currentTool === 'highlight' || currentTool === 'eraser-brush')) {
     freehandPoints.push({ x, y });
     drawFreehandPreview();
     // Broadcast to other users
     updateCurrentDrawing({
-      tool: currentTool === 'eraser-brush' ? 'eraser' : 'freehand',
+      tool: currentTool === 'eraser-brush' ? 'eraser' : currentTool, // 'freehand' or 'highlight'
       points: freehandPoints,
       strokeWidth: currentTool === 'eraser-brush' ? strokeWidth * 3 : strokeWidth
     });
@@ -1776,7 +1776,7 @@ function moveShape(shapeId, dx, dy) {
   } else if (shape.tool === 'text') {
     updated.x += dx;
     updated.y += dy;
-  } else if (shape.tool === 'freehand' || shape.tool === 'eraser') {
+  } else if (shape.tool === 'freehand' || shape.tool === 'highlight' || shape.tool === 'eraser') {
     if (updated.points) {
       updated.points = updated.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
     }
@@ -2009,6 +2009,7 @@ function hitTestShape(x, y, shape, threshold = 8) {
              y >= shape.y - fs && y <= shape.y;
     }
 
+    case 'highlight':
     case 'freehand':
     case 'eraser': {
       if (!shape.points || shape.points.length < 2) return false;
@@ -2121,6 +2122,7 @@ export function getShapeBounds(shape) {
       };
     }
 
+    case 'highlight':
     case 'freehand':
     case 'eraser': {
       if (!shape.points || shape.points.length === 0) {
@@ -2309,7 +2311,10 @@ function drawRemoteDrawings() {
     ctx.globalAlpha = 0.6; // Semi-transparent to show it's in-progress
     ctx.lineWidth = drawing.strokeWidth || 2;
 
-    if (drawing.tool === 'freehand' || drawing.tool === 'eraser') {
+    if (drawing.tool === 'highlight') {
+      ctx.globalAlpha = 0.35;
+      drawFreehand(drawing.points, drawing.color, drawing.strokeWidth || 2);
+    } else if (drawing.tool === 'freehand' || drawing.tool === 'eraser') {
       const color = drawing.tool === 'eraser' ? '#FFFFFF' : drawing.color;
       drawFreehand(drawing.points, color, drawing.strokeWidth || 2);
     } else if (drawing.tool === 'line') {
@@ -2450,6 +2455,11 @@ function drawShape(item) {
     drawEllipseShape(b.x, b.y, b.width, b.height, color, sw, item.strokeStyle, item.fillColor);
   } else if (tool === 'text') {
     drawText(item.x, item.y, item.text, color, item.fontSize, item.fontFamily);
+  } else if (tool === 'highlight') {
+    ctx.save();
+    ctx.globalAlpha = 0.35;
+    drawFreehand(item.points, color, sw);
+    ctx.restore();
   } else if (tool === 'freehand' || tool === 'eraser') {
     drawFreehand(item.points, color, sw);
   }
@@ -2518,6 +2528,12 @@ function drawShapePreview(shape, dx, dy) {
     drawEllipseShape(b.x + dx, b.y + dy, b.width, b.height, shape.color, shape.strokeWidth || 2, shape.strokeStyle, shape.fillColor);
   } else if (shape.tool === 'text') {
     drawText(shape.x + dx, shape.y + dy, shape.text, shape.color, shape.fontSize, shape.fontFamily);
+  } else if (shape.tool === 'highlight') {
+    const movedPoints = shape.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
+    ctx.save();
+    ctx.globalAlpha = 0.35;
+    drawFreehand(movedPoints, shape.color, shape.strokeWidth || 2);
+    ctx.restore();
   } else if (shape.tool === 'freehand' || shape.tool === 'eraser') {
     const movedPoints = shape.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
     drawFreehand(movedPoints, shape.color, shape.strokeWidth || 2);
@@ -2577,7 +2593,7 @@ function drawFreehandPreview() {
   ctx.save();
   ctx.scale(viewport.zoom, viewport.zoom);
   ctx.translate(-viewport.x, -viewport.y);
-  ctx.globalAlpha = 0.7;
+  ctx.globalAlpha = currentTool === 'highlight' ? 0.35 : 0.7;
   drawFreehand(freehandPoints, color, sw);
   ctx.restore();
 }

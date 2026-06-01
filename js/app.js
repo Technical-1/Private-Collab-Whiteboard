@@ -56,6 +56,7 @@ const toolSettings = {
   rect: { strokeWidth: 2, fillEnabled: false, fillColor: '#ffffff' },
   circle: { strokeWidth: 2, fillEnabled: false, fillColor: '#ffffff' },
   freehand: { strokeWidth: 2 },
+  highlight: { strokeWidth: 16 },
   text: { fontSize: 20, fontFamily: 'Arial' },
   'eraser-brush': { strokeWidth: 4 },
   arrow: { strokeWidth: 2 },
@@ -211,6 +212,7 @@ async function main() {
     'draw-rect': 'rect',
     'draw-circle': 'circle',
     'draw-freehand': 'freehand',
+    'draw-highlight': 'highlight',
     'draw-text': 'text',
     'eraser-shape': 'eraser-shape',
     'eraser-brush': 'eraser-brush',
@@ -685,6 +687,7 @@ function setActiveTool(tool) {
     'rect': 'draw-rect',
     'circle': 'draw-circle',
     'freehand': 'draw-freehand',
+    'highlight': 'draw-highlight',
     'text': 'draw-text',
     'eraser-shape': 'eraser-shape',
     'eraser-brush': 'eraser-brush',
@@ -779,6 +782,7 @@ function setupKeyboardShortcuts() {
       const toolShortcuts = {
         'v': 'select',
         'p': 'freehand',
+        'h': 'highlight',
         'l': 'line',
         'r': 'rect',
         'c': 'circle',
@@ -1065,6 +1069,7 @@ function getShapeBoundsForFit(shape) {
         width: 100,
         height: shape.fontSize || 20
       };
+    case 'highlight':
     case 'freehand':
     case 'eraser':
       if (!shape.points || shape.points.length === 0) return null;

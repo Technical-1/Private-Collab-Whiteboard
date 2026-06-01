@@ -431,6 +431,7 @@ export function showKeyboardShortcuts() {
     { category: 'Tools', items: [
       { key: 'V', desc: 'Select tool' },
       { key: 'P', desc: 'Pencil / Freehand' },
+      { key: 'H', desc: 'Highlighter' },
       { key: 'L', desc: 'Line tool' },
       { key: 'A', desc: 'Arrow tool' },
       { key: 'R', desc: 'Rectangle tool' },
