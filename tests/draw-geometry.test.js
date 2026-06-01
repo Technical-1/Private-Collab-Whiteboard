@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { arrowHeadPoints } from '../js/draw-geometry.js';
+import { arrowHeadPoints, polygonPoints, pointInPolygon } from '../js/draw-geometry.js';
 
 describe('arrowHeadPoints', () => {
   it('returns two barb points behind the tip for a rightward arrow', () => {
@@ -15,4 +15,27 @@ describe('arrowHeadPoints', () => {
     expect(b.y).toBeLessThan(10);
     expect(Math.sign(a.x)).toBe(-Math.sign(b.x));
   });
+});
+
+describe('polygonPoints', () => {
+  const bbox = { x: 0, y: 0, width: 10, height: 10 };
+  it('diamond = 4 edge midpoints', () => {
+    const pts = polygonPoints('diamond', bbox);
+    expect(pts).toHaveLength(4);
+    expect(pts).toContainEqual({ x: 5, y: 0 });
+    expect(pts).toContainEqual({ x: 10, y: 5 });
+  });
+  it('triangle = 3 points (base + apex)', () => {
+    const pts = polygonPoints('triangle', bbox);
+    expect(pts).toHaveLength(3);
+    expect(pts).toContainEqual({ x: 0, y: 10 });
+    expect(pts).toContainEqual({ x: 10, y: 10 });
+    expect(pts).toContainEqual({ x: 5, y: 0 });
+  });
+});
+
+describe('pointInPolygon', () => {
+  const square = [{x:0,y:0},{x:10,y:0},{x:10,y:10},{x:0,y:10}];
+  it('true for an interior point', () => expect(pointInPolygon(5, 5, square)).toBe(true));
+  it('false for an exterior point', () => expect(pointInPolygon(20, 5, square)).toBe(false));
 });
