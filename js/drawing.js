@@ -377,6 +377,8 @@ export function setupDrawing(canvasEl, boardsMap, awarenessInstance, getBoardFn)
       laserTrail = [];
       clearLaser();
       isDragging = false; // cancel any in-progress drag so it can't be orphaned by a mid-drag tool switch
+      connectorFromId = null; // drop any half-started connector
+      drawing = false;
       currentTool = tool;
       clearSelection();
       updateCanvasCursor();
@@ -1844,6 +1846,9 @@ function moveShape(shapeId, dx, dy) {
   if (index === -1) return;
 
   const shape = board.get(index);
+  // Connectors have no own position — they follow their bound endpoints. Skip the
+  // wasteful delete+insert rewrite a drag would otherwise produce.
+  if (shape.tool === 'connector') return;
   const updated = { ...shape };
 
   // Update position based on shape type
@@ -2133,7 +2138,9 @@ function hitTestShape(x, y, shape, threshold = 8) {
 
     case 'connector': {
       const f = findShapeById(shape.fromId), t = findShapeById(shape.toId);
-      if (!f || !t) return false;
+      // Treat a connector-typed endpoint as missing: creation forbids it, but raw
+      // peer CRDT data has no schema, so this bounds recursion to depth 1.
+      if (!f || !t || f.tool === 'connector' || t.tool === 'connector') return false;
       const p1 = resolveAnchor(getShapeBounds(f), shape.fromAnchor);
       const p2 = resolveAnchor(getShapeBounds(t), shape.toAnchor);
       return pointToLineDistance(x, y, p1.x, p1.y, p2.x, p2.y) < sw;
@@ -2261,7 +2268,9 @@ export function getShapeBounds(shape) {
 
     case 'connector': {
       const f = findShapeById(shape.fromId), t = findShapeById(shape.toId);
-      if (!f || !t) return { x: 0, y: 0, width: 0, height: 0 };
+      // A connector-typed endpoint (only reachable via raw peer CRDT data) is
+      // treated as missing, bounding this recursion to depth 1.
+      if (!f || !t || f.tool === 'connector' || t.tool === 'connector') return { x: 0, y: 0, width: 0, height: 0 };
       const p1 = resolveAnchor(getShapeBounds(f), shape.fromAnchor);
       const p2 = resolveAnchor(getShapeBounds(t), shape.toAnchor);
       return { x: Math.min(p1.x, p2.x), y: Math.min(p1.y, p2.y),
@@ -2588,7 +2597,9 @@ function drawShape(item) {
   } else if (tool === 'connector') {
     const fromShape = findShapeById(item.fromId);
     const toShape = findShapeById(item.toId);
-    if (fromShape && toShape) {
+    // Skip if an endpoint is missing OR is itself a connector (raw peer CRDT data
+    // could reference one) — prevents resolve recursion past depth 1.
+    if (fromShape && toShape && fromShape.tool !== 'connector' && toShape.tool !== 'connector') {
       const p1 = resolveAnchor(getShapeBounds(fromShape), item.fromAnchor);
       const p2 = resolveAnchor(getShapeBounds(toShape), item.toAnchor);
       drawArrow(p1.x, p1.y, p2.x, p2.y, color, sw, item.strokeStyle, item.arrowHeads);
