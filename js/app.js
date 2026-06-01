@@ -221,6 +221,7 @@ async function main() {
     'draw-triangle': 'triangle',
     'draw-ellipse': 'ellipse',
     'tool-laser': 'laser',
+    'tool-sticky': 'sticky',
   };
 
   Object.entries(toolButtons).forEach(([btnId, toolName]) => {
@@ -243,6 +244,15 @@ async function main() {
       document.querySelectorAll('.style-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       drawingController.setStrokeStyle(btn.dataset.style);
+    };
+  });
+
+  // Wire up sticky note color palette
+  document.querySelectorAll('.sticky-color').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.sticky-color').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      drawingController.setStickyColor(btn.dataset.color);
     };
   });
 
@@ -647,6 +657,12 @@ function updateOptionsVisibility(toolName) {
     el.style.display = isTextTool ? 'flex' : 'none';
   });
 
+  // Sticky-note options (color palette) — only for the sticky tool
+  const isSticky = toolName === 'sticky';
+  document.querySelectorAll('.sticky-options').forEach(el => {
+    el.style.display = isSticky ? 'flex' : 'none';
+  });
+
   // Show/hide fill option (for the fillable shape tools)
   const hasFill = ['rect', 'circle', 'diamond', 'triangle', 'ellipse'].includes(toolName);
   const fillOption = document.querySelector('.fill-option');
@@ -656,7 +672,7 @@ function updateOptionsVisibility(toolName) {
 
   // Show/hide stroke options (hide for select, eraser-shape, and the laser
   // pointer — the laser uses a fixed width, so stroke controls are meaningless).
-  const hasStroke = !['select', 'eraser-shape', 'laser'].includes(toolName);
+  const hasStroke = !['select', 'eraser-shape', 'laser', 'sticky'].includes(toolName);
   const strokeOption = document.querySelector('.stroke-option');
   if (strokeOption) {
     strokeOption.style.display = hasStroke ? 'flex' : 'none';
@@ -678,7 +694,7 @@ function updateOptionsVisibility(toolName) {
   // Hide entire drawing-options container when no options are visible
   const drawingOptions = document.getElementById('drawing-options');
   if (drawingOptions) {
-    const hasAnyOptions = hasStroke || hasFill || isTextTool;
+    const hasAnyOptions = hasStroke || hasFill || isTextTool || isSticky;
     drawingOptions.style.display = hasAnyOptions ? 'flex' : 'none';
   }
 }
@@ -704,6 +720,7 @@ function setActiveTool(tool) {
     'triangle': 'draw-triangle',
     'ellipse': 'draw-ellipse',
     'laser': 'tool-laser',
+    'sticky': 'tool-sticky',
   };
 
   const btnId = toolToButtonId[tool];
@@ -801,6 +818,7 @@ function setupKeyboardShortcuts() {
         'y': 'triangle',
         'o': 'ellipse',
         'q': 'laser',
+        's': 'sticky',
       };
 
       const tool = toolShortcuts[e.key.toLowerCase()];
@@ -1104,6 +1122,7 @@ function getShapeBoundsForFit(shape) {
     case 'diamond':
     case 'triangle':
     case 'ellipse':
+    case 'sticky':
       return {
         x: shape.width >= 0 ? shape.startX : shape.startX + shape.width,
         y: shape.height >= 0 ? shape.startY : shape.startY + shape.height,

@@ -440,6 +440,7 @@ export function showKeyboardShortcuts() {
       { key: 'C', desc: 'Circle tool' },
       { key: 'O', desc: 'Ellipse tool' },
       { key: 'T', desc: 'Text tool' },
+      { key: 'S', desc: 'Sticky note' },
       { key: 'E', desc: 'Eraser (shape)' },
       { key: 'Q', desc: 'Laser pointer' },
     ]},

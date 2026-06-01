@@ -2,6 +2,7 @@ import * as Y from 'yjs';
 import { generateId, safeColor, safeNumber, safeToolName } from './utils.js';
 import { sanitizeShape } from './shape-schema.js';
 import { arrowHeadPoints, polygonPoints, pointInPolygon, dashPattern } from './draw-geometry.js';
+import { wrapText } from './text-wrap.js';
 import {
   updateCursorPosition,
   clearCursorPosition,
@@ -111,6 +112,7 @@ let currentTool = 'select';
 let laserTrail = [];        // ephemeral world-coord points {x,y,t}; never persisted
 let laserAnimating = false; // guards the fade animation rAF loop
 let currentStrokeStyle = 'solid';   // 'solid' | 'dashed' | 'dotted' (global setting)
+let currentStickyColor = '#fff8b8';
 let currentArrowHeads = 'end';      // 'end' | 'both'
 let currentBoardObserver = null;
 // The exact Y.Array instance we're currently observing. The boards Y.Map can
@@ -382,6 +384,7 @@ export function setupDrawing(canvasEl, boardsMap, awarenessInstance, getBoardFn)
     subscribeToBoard,
     setStrokeWidth: (width) => { strokeWidth = width; },
     setStrokeStyle: (style) => { currentStrokeStyle = style; },
+    setStickyColor: (c) => { currentStickyColor = c; },
     setFillEnabled: (enabled) => { fillEnabled = enabled; },
     setFillColor: (color) => { fillColor = color; },
     setFontSize: (size) => { fontSize = size; },
@@ -472,6 +475,20 @@ function handleMouseDown(e) {
   if (currentTool === 'text') {
     if (!canMutate()) return; // Block in read-only mode
     startTextCreation(startX, startY);
+    return;
+  }
+
+  // Handle sticky note - click to place a default-size note centered on the cursor
+  if (currentTool === 'sticky') {
+    if (!canMutate()) return; // Block in read-only mode
+    const size = 180;
+    addDrawing({
+      tool: 'sticky',
+      startX: startX - size / 2,
+      startY: startY - size / 2,
+      width: size, height: size,
+      text: '', fillColor: currentStickyColor, fontSize: 16,
+    });
     return;
   }
 
@@ -1191,7 +1208,7 @@ function showShapeSettingsPopup(shape, bounds) {
 
   // Determine which controls to show based on shape type
   const hasStroke = shape.tool !== 'text';
-  const hasFill = ['rect', 'circle', 'diamond', 'triangle', 'ellipse'].includes(shape.tool);
+  const hasFill = ['rect', 'circle', 'diamond', 'triangle', 'ellipse', 'sticky'].includes(shape.tool);
   const isText = shape.tool === 'text';
 
   // Dynamic header based on shape type. shape.tool is peer-controlled and lands
@@ -1785,7 +1802,7 @@ function moveShape(shapeId, dx, dy) {
     updated.startY += dy;
     updated.x += dx;
     updated.y += dy;
-  } else if (shape.tool === 'diamond' || shape.tool === 'triangle' || shape.tool === 'ellipse') {
+  } else if (shape.tool === 'diamond' || shape.tool === 'triangle' || shape.tool === 'ellipse' || shape.tool === 'sticky') {
     updated.startX += dx;
     updated.startY += dy;
   }
@@ -2042,6 +2059,11 @@ function hitTestShape(x, y, shape, threshold = 8) {
       const tol = sw / Math.min(rx, ry);          // stroke tolerance, normalized
       if (shape.fillColor) return dist <= 1 + tol;
       return Math.abs(dist - 1) < tol;
+    }
+
+    case 'sticky': {
+      const b = getShapeBounds(shape);
+      return x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + b.height;
     }
 
     default:
@@ -2458,6 +2480,9 @@ function drawShape(item) {
     drawEllipseShape(b.x, b.y, b.width, b.height, color, sw, item.strokeStyle, item.fillColor);
   } else if (tool === 'text') {
     drawText(item.x, item.y, item.text, color, item.fontSize, item.fontFamily);
+  } else if (tool === 'sticky') {
+    const b = getShapeBounds(item);
+    drawSticky(b.x, b.y, b.width, b.height, item.fillColor, item.text, item.fontSize);
   } else if (tool === 'highlight') {
     ctx.save();
     ctx.globalAlpha = 0.35;
@@ -2531,6 +2556,9 @@ function drawShapePreview(shape, dx, dy) {
     drawEllipseShape(b.x + dx, b.y + dy, b.width, b.height, shape.color, shape.strokeWidth || 2, shape.strokeStyle, shape.fillColor);
   } else if (shape.tool === 'text') {
     drawText(shape.x + dx, shape.y + dy, shape.text, shape.color, shape.fontSize, shape.fontFamily);
+  } else if (shape.tool === 'sticky') {
+    const b = getShapeBounds(shape);
+    drawSticky(b.x + dx, b.y + dy, b.width, b.height, shape.fillColor, shape.text, shape.fontSize);
   } else if (shape.tool === 'highlight') {
     // The function's outer save/restore (below) scopes this globalAlpha override.
     const movedPoints = shape.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
@@ -2684,6 +2712,31 @@ function drawEllipseShape(x, y, width, height, color, sw, strokeStyle, fillColor
   ctx.strokeStyle = color;
   ctx.stroke();
   ctx.setLineDash([]);
+}
+
+// Render a sticky note: rounded filled rect + word-wrapped text. Text is drawn
+// with canvas fillText (NEVER innerHTML — it is untrusted peer data). save/restore
+// so font/textBaseline/fillStyle never leak into other shapes' draws.
+function drawSticky(x, y, width, height, fillColor, text, fontSize) {
+  const pad = 12;
+  ctx.save();
+  ctx.fillStyle = fillColor || '#fff8b8';
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(x, y, width, height, 6);
+  else ctx.rect(x, y, width, height);
+  ctx.fill();
+  if (text) {
+    const fs = fontSize || 16;
+    ctx.fillStyle = '#1a1a1a';
+    ctx.font = `${fs}px Inter, sans-serif`;
+    ctx.textBaseline = 'top';
+    const lines = wrapText((s) => ctx.measureText(s).width, text, width - pad * 2);
+    for (let i = 0; i < lines.length; i++) {
+      const ly = y + pad + i * (fs * 1.3);
+      if (ly + fs <= y + height - pad) ctx.fillText(lines[i], x + pad, ly);
+    }
+  }
+  ctx.restore();
 }
 
 function drawText(x, y, text, color, size = 20, family = 'Arial') {
