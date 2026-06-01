@@ -18,4 +18,12 @@ describe('getShapeBounds — Phase 1 shapes', () => {
     const b = getShapeBounds({ tool: 'ellipse', startX: 0, startY: 0, width: 20, height: 10 });
     expect(b).toMatchObject({ x: 0, y: 0, width: 20, height: 10 });
   });
+  it('arrow bounds normalize a reversed (right-to-left) segment', () => {
+    const b = getShapeBounds({ tool: 'arrow', startX: 10, startY: 1, x: 2, y: 4 });
+    expect(b).toMatchObject({ x: 2, y: 1, width: 8, height: 3 });
+  });
+  it('diamond bounds normalize negative width/height', () => {
+    const b = getShapeBounds({ tool: 'diamond', startX: 10, startY: 6, width: -10, height: -6 });
+    expect(b).toMatchObject({ x: 0, y: 0, width: 10, height: 6 });
+  });
 });

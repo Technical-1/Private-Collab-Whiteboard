@@ -2064,6 +2064,8 @@ export function getShapeBounds(shape) {
         height: Math.abs(shape.y - shape.startY)
       };
 
+    // diamond/triangle/ellipse are all bbox-based (startX,startY,width,height) —
+    // note ellipse is intentionally NOT center+radius like 'circle'.
     case 'diamond':
     case 'triangle':
     case 'ellipse':

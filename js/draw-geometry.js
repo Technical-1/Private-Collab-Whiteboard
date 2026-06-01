@@ -2,7 +2,7 @@
 // segment from (startX,startY). `len` is the barb length in world units.
 export function arrowHeadPoints(startX, startY, x, y, len) {
   const angle = Math.atan2(y - startY, x - startX);
-  const spread = Math.PI / 7;
+  const spread = Math.PI / 7; // ~26° half-angle between the two barbs
   return [
     { x: x - len * Math.cos(angle - spread), y: y - len * Math.sin(angle - spread) },
     { x: x - len * Math.cos(angle + spread), y: y - len * Math.sin(angle + spread) },

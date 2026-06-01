@@ -32,6 +32,7 @@ describe('sanitizeShape', () => {
 
 describe('sanitizeShape — Phase 1 fields', () => {
   it('preserves arrowHeads and strokeStyle and the new tool', () => {
+    // These canvas-only fields pass through via the `...shape` spread — no explicit allowlist entry needed.
     const clean = sanitizeShape({
       tool: 'arrow', color: '#00ff00', strokeWidth: 3,
       startX: 0, startY: 0, x: 5, y: 5,

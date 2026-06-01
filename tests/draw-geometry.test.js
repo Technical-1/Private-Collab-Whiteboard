@@ -14,6 +14,8 @@ describe('arrowHeadPoints', () => {
     expect(a.y).toBeLessThan(10);
     expect(b.y).toBeLessThan(10);
     expect(Math.sign(a.x)).toBe(-Math.sign(b.x));
+    expect(a.x).not.toBe(0);
+    expect(a.x).toBeCloseTo(-b.x, 5);
   });
 });
 
@@ -38,6 +40,10 @@ describe('pointInPolygon', () => {
   const square = [{x:0,y:0},{x:10,y:0},{x:10,y:10},{x:0,y:10}];
   it('true for an interior point', () => expect(pointInPolygon(5, 5, square)).toBe(true));
   it('false for an exterior point', () => expect(pointInPolygon(20, 5, square)).toBe(false));
+  it('classifies a point well inside vs well outside (boundary points are incidental)', () => {
+    expect(pointInPolygon(1, 1, square)).toBe(true);
+    expect(pointInPolygon(-1, -1, square)).toBe(false);
+  });
 });
 
 describe('dashPattern', () => {
