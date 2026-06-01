@@ -21,3 +21,8 @@ export function nearestAnchors(a, b) {
   }
   return dy >= 0 ? { from: 's', to: 'n' } : { from: 'n', to: 's' };
 }
+
+// A connector is dangling if either endpoint id is absent from the live id set.
+export function isDangling(conn, idSet) {
+  return !idSet.has(conn.fromId) || !idSet.has(conn.toId);
+}

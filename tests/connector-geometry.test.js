@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveAnchor, nearestAnchors } from '../js/connector-geometry.js';
+import { resolveAnchor, nearestAnchors, isDangling } from '../js/connector-geometry.js';
 
 const bbox = { x: 0, y: 0, width: 10, height: 20 };
 
@@ -27,5 +27,16 @@ describe('nearestAnchors', () => {
     const a = { x: 100, y: 0, width: 10, height: 10 };
     const b = { x: 0, y: 0, width: 10, height: 10 };
     expect(nearestAnchors(a, b)).toEqual({ from: 'w', to: 'e' });
+  });
+});
+
+describe('isDangling', () => {
+  const ids = new Set(['a', 'b', 'c']);
+  it('false when both endpoints exist', () => {
+    expect(isDangling({ fromId: 'a', toId: 'b' }, ids)).toBe(false);
+  });
+  it('true when either endpoint is missing', () => {
+    expect(isDangling({ fromId: 'a', toId: 'x' }, ids)).toBe(true);
+    expect(isDangling({ fromId: 'x', toId: 'b' }, ids)).toBe(true);
   });
 });
