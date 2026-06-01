@@ -55,3 +55,18 @@ describe('sanitizeShape — sticky', () => {
     expect(clean.fillColor).toBe('#fff8b8');
   });
 });
+
+describe('sanitizeShape — connector', () => {
+  it('preserves flat ids + anchor enums + tool', () => {
+    const clean = sanitizeShape({
+      tool: 'connector', fromId: 'a1', toId: 'b2',
+      fromAnchor: 'e', toAnchor: 'w', strokeWidth: 2,
+      strokeStyle: 'solid', arrowHeads: 'end',
+    });
+    expect(clean.tool).toBe('connector');
+    expect(clean.fromId).toBe('a1');
+    expect(clean.toId).toBe('b2');
+    expect(clean.fromAnchor).toBe('e');
+    expect(clean.toAnchor).toBe('w');
+  });
+});
