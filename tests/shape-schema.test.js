@@ -29,3 +29,44 @@ describe('sanitizeShape', () => {
     expect(clean).toMatchObject({ tool: 'rect', color: '#ff0000', strokeWidth: 5, fontSize: 16 });
   });
 });
+
+describe('sanitizeShape — Phase 1 fields', () => {
+  it('preserves arrowHeads and strokeStyle and the new tool', () => {
+    // These canvas-only fields pass through via the `...shape` spread — no explicit allowlist entry needed.
+    const clean = sanitizeShape({
+      tool: 'arrow', color: '#00ff00', strokeWidth: 3,
+      startX: 0, startY: 0, x: 5, y: 5,
+      arrowHeads: 'both', strokeStyle: 'dashed',
+    });
+    expect(clean.tool).toBe('arrow');
+    expect(clean.arrowHeads).toBe('both');
+    expect(clean.strokeStyle).toBe('dashed');
+  });
+});
+
+describe('sanitizeShape — sticky', () => {
+  it('preserves text and fillColor and the tool; keeps text verbatim (rendered to canvas, not HTML)', () => {
+    const clean = sanitizeShape({
+      tool: 'sticky', text: 'hello <not html>', fillColor: '#fff8b8',
+      startX: 0, startY: 0, width: 180, height: 180, fontSize: 16,
+    });
+    expect(clean.tool).toBe('sticky');
+    expect(clean.text).toBe('hello <not html>');
+    expect(clean.fillColor).toBe('#fff8b8');
+  });
+});
+
+describe('sanitizeShape — connector', () => {
+  it('preserves flat ids + anchor enums + tool', () => {
+    const clean = sanitizeShape({
+      tool: 'connector', fromId: 'a1', toId: 'b2',
+      fromAnchor: 'e', toAnchor: 'w', strokeWidth: 2,
+      strokeStyle: 'solid', arrowHeads: 'end',
+    });
+    expect(clean.tool).toBe('connector');
+    expect(clean.fromId).toBe('a1');
+    expect(clean.toId).toBe('b2');
+    expect(clean.fromAnchor).toBe('e');
+    expect(clean.toAnchor).toBe('w');
+  });
+});

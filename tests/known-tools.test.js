@@ -1,0 +1,34 @@
+import { describe, it, expect } from 'vitest';
+import { safeToolName } from '../js/utils.js';
+
+describe('safeToolName allowlist — Phase 1 tools', () => {
+  for (const tool of ['arrow', 'diamond', 'triangle', 'ellipse']) {
+    it(`passes through "${tool}"`, () => {
+      expect(safeToolName(tool)).toBe(tool);
+    });
+  }
+  it('still neutralizes unknown/injected names', () => {
+    expect(safeToolName('<img src=x onerror=alert(1)>')).toBe('shape');
+  });
+});
+
+describe('safeToolName — Phase 2', () => {
+  it('passes through "highlight"', () => {
+    expect(safeToolName('highlight')).toBe('highlight');
+  });
+  it('does NOT treat "laser" as a persisted shape tool', () => {
+    expect(safeToolName('laser')).toBe('shape');
+  });
+});
+
+describe('safeToolName — Phase 3', () => {
+  it('passes through "sticky"', () => {
+    expect(safeToolName('sticky')).toBe('sticky');
+  });
+});
+
+describe('safeToolName — Phase 4', () => {
+  it('passes through "connector"', () => {
+    expect(safeToolName('connector')).toBe('connector');
+  });
+});

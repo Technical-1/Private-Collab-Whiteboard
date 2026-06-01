@@ -936,6 +936,66 @@ body {
   color: white;
 }
 
+.stroke-style-group {
+  display: flex;
+  gap: 4px;
+}
+
+.style-btn {
+  min-width: 30px;
+  height: 26px;
+  padding: 0 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.style-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+}
+
+.style-btn.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: white;
+}
+
+/* Sticky-note color palette */
+.sticky-palette {
+  display: flex;
+  gap: 6px;
+}
+
+.sticky-color {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  cursor: pointer;
+  padding: 0;
+  transition: transform 0.12s, border-color 0.12s, box-shadow 0.12s;
+}
+
+.sticky-color:hover {
+  transform: scale(1.12);
+}
+
+.sticky-color.active {
+  border-color: var(--text-primary);
+  box-shadow: 0 0 0 2px var(--primary);
+}
+
 .options-panel input[type="range"] {
   width: 60px;
   height: 4px;

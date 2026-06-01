@@ -6,7 +6,7 @@ import {
   changeUserColor,
   getLocalUserColor
 } from './awareness.js';
-import { setupDrawing, subscribeToBoard, getTexts, getCanvas, screenToWorld, getViewport, panBy, setZoom, setReadOnlyMode, cleanup as cleanupDrawing, deleteSelectedShapes, copySelectedShapes, pasteShapes, duplicateSelectedShapes } from './drawing.js';
+import { setupDrawing, subscribeToBoard, getTexts, getCanvas, screenToWorld, getViewport, panBy, setZoom, setReadOnlyMode, cleanup as cleanupDrawing, deleteSelectedShapes, copySelectedShapes, pasteShapes, duplicateSelectedShapes, getFitBounds } from './drawing.js';
 import { setupBoardManager, setBoardsContainer } from './boards.js';
 import {
   getRoomIdFromUrl,
@@ -56,8 +56,13 @@ const toolSettings = {
   rect: { strokeWidth: 2, fillEnabled: false, fillColor: '#ffffff' },
   circle: { strokeWidth: 2, fillEnabled: false, fillColor: '#ffffff' },
   freehand: { strokeWidth: 2 },
+  highlight: { strokeWidth: 16 },
   text: { fontSize: 20, fontFamily: 'Arial' },
-  'eraser-brush': { strokeWidth: 4 }
+  'eraser-brush': { strokeWidth: 4 },
+  arrow: { strokeWidth: 2 },
+  diamond: { strokeWidth: 2, fillEnabled: false, fillColor: '#ffffff' },
+  triangle: { strokeWidth: 2, fillEnabled: false, fillColor: '#ffffff' },
+  ellipse: { strokeWidth: 2, fillEnabled: false, fillColor: '#ffffff' }
 };
 
 let currentToolName = 'select';
@@ -207,9 +212,17 @@ async function main() {
     'draw-rect': 'rect',
     'draw-circle': 'circle',
     'draw-freehand': 'freehand',
+    'draw-highlight': 'highlight',
     'draw-text': 'text',
     'eraser-shape': 'eraser-shape',
-    'eraser-brush': 'eraser-brush'
+    'eraser-brush': 'eraser-brush',
+    'draw-arrow': 'arrow',
+    'draw-diamond': 'diamond',
+    'draw-triangle': 'triangle',
+    'draw-ellipse': 'ellipse',
+    'tool-laser': 'laser',
+    'tool-sticky': 'sticky',
+    'tool-connector': 'connector',
   };
 
   Object.entries(toolButtons).forEach(([btnId, toolName]) => {
@@ -223,6 +236,26 @@ async function main() {
     btn.onclick = () => {
       const width = parseInt(btn.dataset.width);
       setStrokeWidth(width);
+    };
+  });
+
+  // Wire up stroke style buttons
+  document.querySelectorAll('.style-btn').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.style-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      drawingController.setStrokeStyle(btn.dataset.style);
+    };
+  });
+
+  // Wire up sticky note color palette. Swatch backgrounds are set here via CSSOM
+  // (not an inline style attribute) because the production CSP forbids inline styles.
+  document.querySelectorAll('.sticky-color').forEach(btn => {
+    btn.style.background = btn.dataset.color;
+    btn.onclick = () => {
+      document.querySelectorAll('.sticky-color').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      drawingController.setStickyColor(btn.dataset.color);
     };
   });
 
@@ -627,18 +660,32 @@ function updateOptionsVisibility(toolName) {
     el.style.display = isTextTool ? 'flex' : 'none';
   });
 
-  // Show/hide fill option (only for rect and circle)
-  const hasFill = toolName === 'rect' || toolName === 'circle';
+  // Sticky-note options (color palette) — only for the sticky tool
+  const isSticky = toolName === 'sticky';
+  document.querySelectorAll('.sticky-options').forEach(el => {
+    el.style.display = isSticky ? 'flex' : 'none';
+  });
+
+  // Show/hide fill option (for the fillable shape tools)
+  const hasFill = ['rect', 'circle', 'diamond', 'triangle', 'ellipse'].includes(toolName);
   const fillOption = document.querySelector('.fill-option');
   if (fillOption) {
     fillOption.style.display = hasFill ? 'flex' : 'none';
   }
 
-  // Show/hide stroke options (hide for select and eraser-shape)
-  const hasStroke = !['select', 'eraser-shape'].includes(toolName);
+  // Show/hide stroke options (hide for select, eraser-shape, and the laser
+  // pointer — the laser uses a fixed width, so stroke controls are meaningless).
+  const hasStroke = !['select', 'eraser-shape', 'laser', 'sticky', 'connector'].includes(toolName);
   const strokeOption = document.querySelector('.stroke-option');
   if (strokeOption) {
     strokeOption.style.display = hasStroke ? 'flex' : 'none';
+  }
+
+  // Stroke STYLE (solid/dashed/dotted) is meaningless for the highlighter, which
+  // is always solid — hide the segmented control for it (width slider stays).
+  const styleGroup = document.querySelector('.stroke-style-group');
+  if (styleGroup) {
+    styleGroup.style.display = (hasStroke && toolName !== 'highlight') ? 'flex' : 'none';
   }
 
   // Show/hide the divider between stroke and fill options
@@ -650,7 +697,7 @@ function updateOptionsVisibility(toolName) {
   // Hide entire drawing-options container when no options are visible
   const drawingOptions = document.getElementById('drawing-options');
   if (drawingOptions) {
-    const hasAnyOptions = hasStroke || hasFill || isTextTool;
+    const hasAnyOptions = hasStroke || hasFill || isTextTool || isSticky;
     drawingOptions.style.display = hasAnyOptions ? 'flex' : 'none';
   }
 }
@@ -667,9 +714,17 @@ function setActiveTool(tool) {
     'rect': 'draw-rect',
     'circle': 'draw-circle',
     'freehand': 'draw-freehand',
+    'highlight': 'draw-highlight',
     'text': 'draw-text',
     'eraser-shape': 'eraser-shape',
-    'eraser-brush': 'eraser-brush'
+    'eraser-brush': 'eraser-brush',
+    'arrow': 'draw-arrow',
+    'diamond': 'draw-diamond',
+    'triangle': 'draw-triangle',
+    'ellipse': 'draw-ellipse',
+    'laser': 'tool-laser',
+    'sticky': 'tool-sticky',
+    'connector': 'tool-connector',
   };
 
   const btnId = toolToButtonId[tool];
@@ -756,11 +811,19 @@ function setupKeyboardShortcuts() {
       const toolShortcuts = {
         'v': 'select',
         'p': 'freehand',
+        'h': 'highlight',
         'l': 'line',
         'r': 'rect',
         'c': 'circle',
         't': 'text',
-        'e': 'eraser-shape'
+        'e': 'eraser-shape',
+        'a': 'arrow',
+        'd': 'diamond',
+        'y': 'triangle',
+        'o': 'ellipse',
+        'q': 'laser',
+        's': 'sticky',
+        'g': 'connector',
       };
 
       const tool = toolShortcuts[e.key.toLowerCase()];
@@ -1008,54 +1071,9 @@ function getAllShapesBounds() {
 }
 
 function getShapeBoundsForFit(shape) {
-  switch (shape.tool) {
-    case 'line':
-      return {
-        x: Math.min(shape.startX, shape.x),
-        y: Math.min(shape.startY, shape.y),
-        width: Math.abs(shape.x - shape.startX) || 1,
-        height: Math.abs(shape.y - shape.startY) || 1
-      };
-    case 'rect':
-      return {
-        x: shape.width >= 0 ? shape.startX : shape.startX + shape.width,
-        y: shape.height >= 0 ? shape.startY : shape.startY + shape.height,
-        width: Math.abs(shape.width) || 1,
-        height: Math.abs(shape.height) || 1
-      };
-    case 'circle':
-      return {
-        x: shape.startX - shape.radius,
-        y: shape.startY - shape.radius,
-        width: shape.radius * 2 || 1,
-        height: shape.radius * 2 || 1
-      };
-    case 'text':
-      return {
-        x: shape.x,
-        y: shape.y - (shape.fontSize || 20),
-        width: 100,
-        height: shape.fontSize || 20
-      };
-    case 'freehand':
-    case 'eraser':
-      if (!shape.points || shape.points.length === 0) return null;
-      let fMinX = Infinity, fMinY = Infinity, fMaxX = -Infinity, fMaxY = -Infinity;
-      shape.points.forEach(p => {
-        fMinX = Math.min(fMinX, p.x);
-        fMinY = Math.min(fMinY, p.y);
-        fMaxX = Math.max(fMaxX, p.x);
-        fMaxY = Math.max(fMaxY, p.y);
-      });
-      return {
-        x: fMinX,
-        y: fMinY,
-        width: (fMaxX - fMinX) || 1,
-        height: (fMaxY - fMinY) || 1
-      };
-    default:
-      return null;
-  }
+  // Single source of truth lives in drawing.js getFitBounds (which reuses
+  // getShapeBounds), so a new tool is covered automatically.
+  return getFitBounds(shape);
 }
 
 // ============ Browser Compatibility ============

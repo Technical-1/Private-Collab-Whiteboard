@@ -1,15 +1,23 @@
 import * as Y from 'yjs';
 import { generateId, safeColor, safeNumber, safeToolName } from './utils.js';
 import { sanitizeShape } from './shape-schema.js';
+import { arrowHeadPoints, polygonPoints, pointInPolygon, dashPattern } from './draw-geometry.js';
+import { wrapText } from './text-wrap.js';
 import {
   updateCursorPosition,
   clearCursorPosition,
   refreshCursors,
   updateCurrentDrawing,
   clearCurrentDrawing,
-  getRemoteDrawings
+  getRemoteDrawings,
+  updateLaser,
+  clearLaser,
+  getRemoteLasers,
+  getLocalUserColor
 } from './awareness.js';
+import { pruneTrail, MAX_TRAIL_AGE_MS } from './laser-trail.js';
 import { showAlert } from './modal.js';
+import { resolveAnchor, nearestAnchors, danglingConnectorIndices } from './connector-geometry.js';
 import { ZOOM_MIN, ZOOM_MAX, HIT_TEST_THRESHOLD } from './config.js';
 
 let canvas = null;
@@ -102,6 +110,12 @@ let drawing = false;
 let startX = 0;
 let startY = 0;
 let currentTool = 'select';
+let connectorFromId = null;
+let laserTrail = [];        // ephemeral world-coord points {x,y,t}; never persisted
+let laserAnimating = false; // guards the fade animation rAF loop
+let currentStrokeStyle = 'solid';   // 'solid' | 'dashed' | 'dotted' (global setting)
+let currentStickyColor = '#fff8b8';
+let currentArrowHeads = 'end';      // 'end' | 'both'
 let currentBoardObserver = null;
 // The exact Y.Array instance we're currently observing. The boards Y.Map can
 // swap a board's array instance out from under us — e.g. when each peer creates
@@ -203,6 +217,8 @@ let dragStartX = 0;
 let dragStartY = 0;
 let dragOffsetX = 0;
 let dragOffsetY = 0;
+let dragDX = 0; // live drag delta in world units, valid only while isDragging
+let dragDY = 0;
 
 // Freehand drawing state
 let freehandPoints = [];
@@ -228,6 +244,7 @@ let boardsMapObserver = null;
 function resetDrawingState() {
   drawing = false;
   freehandPoints = [];
+  connectorFromId = null; // drop any half-started connector on board switch
 
   clearEditingTextBroadcast();
   if (editingTextId || textInput) {
@@ -244,6 +261,8 @@ function resetDrawingState() {
   dragStartY = 0;
   dragOffsetX = 0;
   dragOffsetY = 0;
+  dragDX = 0;
+  dragDY = 0;
 
   clearCurrentDrawing();
   hideShapeControls(true);
@@ -360,6 +379,13 @@ export function setupDrawing(canvasEl, boardsMap, awarenessInstance, getBoardFn)
 
   return {
     setTool: (tool) => {
+      laserTrail = [];
+      clearLaser();
+      isDragging = false; // cancel any in-progress drag so it can't be orphaned by a mid-drag tool switch
+      dragDX = 0;
+      dragDY = 0;
+      connectorFromId = null; // drop any half-started connector
+      drawing = false;
       currentTool = tool;
       clearSelection();
       updateCanvasCursor();
@@ -368,6 +394,8 @@ export function setupDrawing(canvasEl, boardsMap, awarenessInstance, getBoardFn)
     redraw: () => redrawCanvas(),
     subscribeToBoard,
     setStrokeWidth: (width) => { strokeWidth = width; },
+    setStrokeStyle: (style) => { currentStrokeStyle = style; },
+    setStickyColor: (c) => { currentStickyColor = c; },
     setFillEnabled: (enabled) => { fillEnabled = enabled; },
     setFillColor: (color) => { fillColor = color; },
     setFontSize: (size) => { fontSize = size; },
@@ -386,7 +414,7 @@ function updateCanvasCursor() {
     container.classList.add('tool-select');
   } else if (currentTool === 'eraser-shape') {
     container.classList.add('tool-eraser');
-  } else if (currentTool === 'freehand' || currentTool === 'eraser-brush') {
+  } else if (currentTool === 'freehand' || currentTool === 'highlight' || currentTool === 'eraser-brush') {
     container.classList.add('tool-freehand');
   }
 }
@@ -461,8 +489,32 @@ function handleMouseDown(e) {
     return;
   }
 
+  // Handle sticky note - click to place a default-size note centered on the cursor
+  if (currentTool === 'sticky') {
+    if (!canMutate()) return; // Block in read-only mode
+    const size = 180;
+    addDrawing({
+      tool: 'sticky',
+      startX: startX - size / 2,
+      startY: startY - size / 2,
+      width: size, height: size,
+      text: '', fillColor: currentStickyColor, fontSize: 16,
+    });
+    return;
+  }
+
+  // Connector - capture the source shape; the user then drags to a target to bind.
+  if (currentTool === 'connector') {
+    if (!canMutate()) return;
+    const shape = findShapeAtPoint(startX, startY);
+    // Only bind to real shapes, never another connector (avoids resolve recursion).
+    connectorFromId = (shape && shape.tool !== 'connector') ? shape.id : null;
+    if (connectorFromId) drawing = true;
+    return;
+  }
+
   // Handle freehand and brush eraser
-  if (currentTool === 'freehand' || currentTool === 'eraser-brush') {
+  if (currentTool === 'freehand' || currentTool === 'highlight' || currentTool === 'eraser-brush') {
     if (!canMutate()) return; // Block in read-only mode
     drawing = true;
     freehandPoints = [{ x: startX, y: startY }];
@@ -470,7 +522,7 @@ function handleMouseDown(e) {
   }
 
   // Handle shape drawing tools
-  if (['line', 'rect', 'circle'].includes(currentTool)) {
+  if (['line', 'rect', 'circle', 'arrow', 'diamond', 'triangle', 'ellipse'].includes(currentTool)) {
     if (!canMutate()) return; // Block in read-only mode
     drawing = true;
   }
@@ -489,6 +541,8 @@ function handleMouseUp(e) {
   // Handle drag end
   if (isDragging && selectedIds.size > 0) {
     isDragging = false;
+    dragDX = 0;
+    dragDY = 0;
     document.getElementById('canvas-container').classList.remove('dragging');
 
     const dx = x - dragStartX;
@@ -509,12 +563,35 @@ function handleMouseUp(e) {
   // Clear the live preview for other users
   clearCurrentDrawing();
 
+  // Connector - bind the source shape to the target shape under the release point.
+  if (currentTool === 'connector') {
+    if (connectorFromId) {
+      const target = findShapeAtPoint(x, y);
+      if (target && target.tool !== 'connector' && target.id !== connectorFromId) {
+        const fromShape = findShapeById(connectorFromId);
+        if (fromShape) {
+          const { from, to } = nearestAnchors(getShapeBounds(fromShape), getShapeBounds(target));
+          addDrawing({
+            tool: 'connector',
+            fromId: connectorFromId, toId: target.id,
+            fromAnchor: from, toAnchor: to,
+            strokeWidth, strokeStyle: 'solid', arrowHeads: 'end',
+          });
+        }
+      }
+    }
+    connectorFromId = null;
+    redrawCanvas();
+    return;
+  }
+
   // Handle freehand drawing
-  if (currentTool === 'freehand' && freehandPoints.length > 1) {
+  if ((currentTool === 'freehand' || currentTool === 'highlight') && freehandPoints.length > 1) {
     addDrawing({
-      tool: 'freehand',
+      tool: currentTool, // 'freehand' or 'highlight'
       points: [...freehandPoints],
-      strokeWidth: strokeWidth
+      strokeWidth: strokeWidth,
+      strokeStyle: currentTool === 'freehand' ? currentStrokeStyle : 'solid'
     });
     freehandPoints = [];
     redrawCanvas();
@@ -542,7 +619,8 @@ function handleMouseUp(e) {
       startY,
       x,
       y,
-      strokeWidth: strokeWidth
+      strokeWidth: strokeWidth,
+      strokeStyle: currentStrokeStyle
     });
   } else if (currentTool === 'rect') {
     addDrawing({
@@ -552,6 +630,7 @@ function handleMouseUp(e) {
       width: x - startX,
       height: y - startY,
       strokeWidth: strokeWidth,
+      strokeStyle: currentStrokeStyle,
       fillColor: fillEnabled ? fillColor : null
     });
   } else if (currentTool === 'circle') {
@@ -562,7 +641,23 @@ function handleMouseUp(e) {
       startY,
       radius,
       strokeWidth: strokeWidth,
+      strokeStyle: currentStrokeStyle,
       fillColor: fillEnabled ? fillColor : null
+    });
+  } else if (currentTool === 'arrow') {
+    addDrawing({
+      tool: 'arrow', startX, startY, x, y,
+      strokeWidth,
+      strokeStyle: currentStrokeStyle,
+      arrowHeads: currentArrowHeads,
+    });
+  } else if (currentTool === 'diamond' || currentTool === 'triangle' || currentTool === 'ellipse') {
+    addDrawing({
+      tool: currentTool, startX, startY,
+      width: x - startX, height: y - startY,
+      strokeWidth,
+      strokeStyle: currentStrokeStyle,
+      fillColor: fillEnabled ? fillColor : null,
     });
   }
 }
@@ -580,28 +675,55 @@ function handleMouseMove(e) {
   // Update cursor position for other users to see (use world coords for cross-viewport consistency)
   updateCursorPosition(x, y);
 
+  // Laser pointer: ephemeral trail broadcast via awareness, never persisted.
+  if (currentTool === 'laser') {
+    const now = Date.now();
+    laserTrail.push({ x, y, t: now });
+    laserTrail = pruneTrail(laserTrail, now);
+    updateLaser(laserTrail);
+    redrawCanvas();
+    return;
+  }
+
+  // Connector creation preview: rubber-band arrow from the source shape to the cursor.
+  if (currentTool === 'connector') {
+    if (drawing && connectorFromId) {
+      const fromShape = findShapeById(connectorFromId);
+      if (fromShape) {
+        redrawCanvas();
+        const p1 = resolveAnchor(getShapeBounds(fromShape), 'c');
+        ctx.save();
+        ctx.scale(viewport.zoom, viewport.zoom);
+        ctx.translate(-viewport.x, -viewport.y);
+        ctx.globalAlpha = 0.6;
+        drawArrow(p1.x, p1.y, x, y, '#6366f1', strokeWidth, 'solid', 'end');
+        ctx.restore();
+      }
+    }
+    return;
+  }
+
   // Handle dragging
   if (isDragging && selectedIds.size > 0) {
-    // Draw preview of dragged shapes
+    dragDX = x - dragStartX;
+    dragDY = y - dragStartY;
     redrawCanvas();
-    const dx = x - dragStartX;
-    const dy = y - dragStartY;
     selectedIds.forEach(id => {
       const shape = findShapeById(id);
       if (shape) {
-        drawShapePreview(shape, dx, dy);
+        drawShapePreview(shape, dragDX, dragDY);
       }
     });
     return;
   }
 
   // Handle freehand drawing preview
-  if (drawing && (currentTool === 'freehand' || currentTool === 'eraser-brush')) {
+  if (drawing && (currentTool === 'freehand' || currentTool === 'highlight' || currentTool === 'eraser-brush')) {
     freehandPoints.push({ x, y });
     drawFreehandPreview();
     // Broadcast to other users
     updateCurrentDrawing({
-      tool: currentTool === 'eraser-brush' ? 'eraser' : 'freehand',
+      tool: currentTool === 'eraser-brush' ? 'eraser' : currentTool, // 'freehand' or 'highlight'
       points: freehandPoints,
       strokeWidth: currentTool === 'eraser-brush' ? strokeWidth * 3 : strokeWidth
     });
@@ -609,7 +731,7 @@ function handleMouseMove(e) {
   }
 
   // Handle shape drawing preview
-  if (drawing && ['line', 'rect', 'circle'].includes(currentTool)) {
+  if (drawing && ['line', 'rect', 'circle', 'arrow', 'diamond', 'triangle', 'ellipse'].includes(currentTool)) {
     redrawCanvas();
     drawShapeCreationPreview(x, y);
     // Broadcast to other users
@@ -618,7 +740,7 @@ function handleMouseMove(e) {
         tool: 'line',
         startX, startY,
         x, y,
-        strokeWidth
+        strokeWidth, strokeStyle: currentStrokeStyle,
       });
     } else if (currentTool === 'rect') {
       updateCurrentDrawing({
@@ -626,7 +748,7 @@ function handleMouseMove(e) {
         startX, startY,
         width: x - startX,
         height: y - startY,
-        strokeWidth,
+        strokeWidth, strokeStyle: currentStrokeStyle,
         fillColor: fillEnabled ? fillColor : null
       });
     } else if (currentTool === 'circle') {
@@ -635,8 +757,20 @@ function handleMouseMove(e) {
         tool: 'circle',
         startX, startY,
         radius,
-        strokeWidth,
+        strokeWidth, strokeStyle: currentStrokeStyle,
         fillColor: fillEnabled ? fillColor : null
+      });
+    } else if (currentTool === 'arrow') {
+      updateCurrentDrawing({
+        tool: 'arrow', startX, startY, x, y,
+        strokeWidth, strokeStyle: currentStrokeStyle, arrowHeads: currentArrowHeads,
+      });
+    } else if (currentTool === 'diamond' || currentTool === 'triangle' || currentTool === 'ellipse') {
+      updateCurrentDrawing({
+        tool: currentTool, startX, startY,
+        width: x - startX, height: y - startY,
+        strokeWidth, strokeStyle: currentStrokeStyle,
+        fillColor: fillEnabled ? fillColor : null,
       });
     }
     return;
@@ -676,6 +810,7 @@ function handleMouseMove(e) {
 }
 
 function handleMouseLeave() {
+  if (laserTrail.length) { laserTrail = []; clearLaser(); }
   clearCursorPosition();
   // Only clear hover, keep selection and its controls
   if (selectedIds.size === 0) {
@@ -694,7 +829,7 @@ function handleDoubleClick(e) {
   const world = screenToWorld(screenX, screenY);
 
   const shape = findShapeAtPoint(world.x, world.y);
-  if (shape && shape.tool === 'text') {
+  if (shape && (shape.tool === 'text' || shape.tool === 'sticky')) {
     startTextEditing(shape);
   }
 }
@@ -800,6 +935,8 @@ function handleTouchStart(e) {
     }
     if (isDragging) {
       isDragging = false;
+      dragDX = 0;
+      dragDY = 0;
     }
   }
 }
@@ -954,14 +1091,17 @@ export function pasteShapes(offsetX = 20, offsetY = 20) {
   // Clear current selection
   selectedIds.clear();
 
-  // Paste each shape with new ID and offset
-  clipboard.forEach(shapeCopy => {
-    const newShape = {
-      ...shapeCopy,
-      id: generateId(),
-      locked: false // Don't paste locked state
-    };
+  // Assign new ids up front and remember old→new, so a pasted connector can be
+  // re-pointed at the pasted COPIES of its endpoints rather than the originals.
+  const idMap = new Map();
+  const prepared = clipboard.map(shapeCopy => {
+    const newId = generateId();
+    idMap.set(shapeCopy.id, newId);
+    return { ...shapeCopy, id: newId, locked: false };
+  });
 
+  let pasted = 0;
+  prepared.forEach(newShape => {
     // Offset position
     if (newShape.x !== undefined) newShape.x += offsetX;
     if (newShape.y !== undefined) newShape.y += offsetY;
@@ -976,12 +1116,24 @@ export function pasteShapes(offsetX = 20, offsetY = 20) {
       }));
     }
 
+    // Connectors bind by id. Re-point to the pasted endpoint copies; if an endpoint
+    // wasn't part of the copied set, drop the connector rather than create a
+    // confusing duplicate bound to (and overlapping) the originals.
+    if (newShape.tool === 'connector') {
+      const from = idMap.get(newShape.fromId);
+      const to = idMap.get(newShape.toId);
+      if (!from || !to) return;
+      newShape.fromId = from;
+      newShape.toId = to;
+    }
+
     board.push([newShape]);
     selectedIds.add(newShape.id);
+    pasted++;
   });
 
   redrawCanvas();
-  return clipboard.length;
+  return pasted;
 }
 
 /**
@@ -1133,9 +1285,10 @@ function showShapeSettingsPopup(shape, bounds) {
   // safe. (Replaces the scattered safeColor/safeNumber/safeToolName calls.)
   shape = sanitizeShape(shape) || shape;
 
-  // Determine which controls to show based on shape type
-  const hasStroke = shape.tool !== 'text';
-  const hasFill = shape.tool === 'rect' || shape.tool === 'circle';
+  // Determine which controls to show based on shape type. Sticky notes have no
+  // stroke (drawSticky never strokes) — only their fill (note color) is editable.
+  const hasStroke = shape.tool !== 'text' && shape.tool !== 'sticky';
+  const hasFill = ['rect', 'circle', 'diamond', 'triangle', 'ellipse', 'sticky'].includes(shape.tool);
   const isText = shape.tool === 'text';
 
   // Dynamic header based on shape type. shape.tool is peer-controlled and lands
@@ -1152,13 +1305,16 @@ function showShapeSettingsPopup(shape, bounds) {
   const fillColor = shape.fillColor || '#ffffff';
   const fontSize = shape.fontSize;
 
-  // Stroke color (for all except text uses fill)
-  html += `
-    <div class="popup-row">
-      <label>${isText ? 'Color' : 'Stroke Color'}</label>
-      <input type="color" id="shape-color" value="${strokeColor}">
-    </div>
-  `;
+  // Stroke/text color. Sticky notes have no stroke (drawSticky ignores `color`) —
+  // their color is the note fill, edited via the Fill control below, so skip this row.
+  if (shape.tool !== 'sticky') {
+    html += `
+      <div class="popup-row">
+        <label>${isText ? 'Color' : 'Stroke Color'}</label>
+        <input type="color" id="shape-color" value="${strokeColor}">
+      </div>
+    `;
+  }
 
   // Stroke width (for shapes with strokes)
   if (hasStroke && !isText) {
@@ -1588,7 +1744,10 @@ function startTextEditing(shape) {
   broadcastEditingText(shape.id);
 
   // Convert world coordinates to screen coordinates for input positioning
-  const screenPos = worldToScreen(shape.x, shape.y);
+  // Sticky notes anchor on their top-left (startX/startY); text shapes use x/y.
+  const anchorX = shape.tool === 'sticky' ? shape.startX : shape.x;
+  const anchorY = shape.tool === 'sticky' ? shape.startY : shape.y;
+  const screenPos = worldToScreen(anchorX, anchorY);
   const scaledFontSize = (shape.fontSize || 20) * viewport.zoom;
 
   // Clamp position to keep input within container bounds
@@ -1610,7 +1769,8 @@ function startTextEditing(shape) {
   textInput.style.fontSize = `${scaledFontSize}px`;
   textInput.style.fontFamily = shape.fontFamily || 'Arial';
   textInput.style.maxWidth = `${containerRect.width - margin * 2}px`;
-  textInput.style.transform = 'translateY(-100%)'; // Position above the text baseline
+  // Text sits above its baseline; a sticky's anchor is its top edge, so place the input there.
+  textInput.style.transform = shape.tool === 'sticky' ? 'none' : 'translateY(-100%)';
 
   // Redraw on input to show live preview
   textInput.addEventListener('input', () => {
@@ -1669,20 +1829,25 @@ function updateTextInputPosition() {
   const shape = findShapeById(editingTextId);
   if (!shape) return;
 
-  const screenPos = worldToScreen(shape.x, shape.y);
+  const anchorX = shape.tool === 'sticky' ? shape.startX : shape.x;
+  const anchorY = shape.tool === 'sticky' ? shape.startY : shape.y;
+  const screenPos = worldToScreen(anchorX, anchorY);
   const scaledFontSize = (shape.fontSize || 20) * viewport.zoom;
 
   textInput.style.left = `${screenPos.x}px`;
   textInput.style.top = `${screenPos.y}px`;
   textInput.style.fontSize = `${scaledFontSize}px`;
-  textInput.style.transform = 'translateY(-100%)';
+  textInput.style.transform = shape.tool === 'sticky' ? 'none' : 'translateY(-100%)';
 }
 
 function finishTextEditing() {
   if (!editingTextId || !textInput) return;
 
+  const editingShape = findShapeById(editingTextId);
   const newText = textInput.value;
-  if (newText && newText.trim()) {
+  // A blank text shape would be invisible noise, so we keep the old text for the
+  // text tool; but a sticky stays visible when emptied, so allow clearing it.
+  if (editingShape?.tool === 'sticky' || (newText && newText.trim())) {
     updateShapeProperty(editingTextId, 'text', newText);
   }
 
@@ -1706,6 +1871,9 @@ function moveShape(shapeId, dx, dy) {
   if (index === -1) return;
 
   const shape = board.get(index);
+  // Connectors have no own position — they follow their bound endpoints. Skip the
+  // wasteful delete+insert rewrite a drag would otherwise produce.
+  if (shape.tool === 'connector') return;
   const updated = { ...shape };
 
   // Update position based on shape type
@@ -1720,10 +1888,18 @@ function moveShape(shapeId, dx, dy) {
   } else if (shape.tool === 'text') {
     updated.x += dx;
     updated.y += dy;
-  } else if (shape.tool === 'freehand' || shape.tool === 'eraser') {
+  } else if (shape.tool === 'freehand' || shape.tool === 'highlight' || shape.tool === 'eraser') {
     if (updated.points) {
       updated.points = updated.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
     }
+  } else if (shape.tool === 'arrow') {
+    updated.startX += dx;
+    updated.startY += dy;
+    updated.x += dx;
+    updated.y += dy;
+  } else if (shape.tool === 'diamond' || shape.tool === 'triangle' || shape.tool === 'ellipse' || shape.tool === 'sticky') {
+    updated.startX += dx;
+    updated.startY += dy;
   }
 
   board.delete(index);
@@ -1744,12 +1920,37 @@ function deleteShape(shapeId) {
       showAlert('Shape Locked', 'This shape is locked and cannot be deleted. Unlock it first.');
       return;
     }
-    board.delete(index);
-    selectedIds.delete(shapeId);
-    if (hoveredId === shapeId) {
-      hoveredId = null;
-    }
-    hideShapeControls(true); // Force close popup when shape is deleted
+    // One transaction => one undo step: undoing the shape also restores any
+    // connector this cascade removes.
+    const run = () => {
+      board.delete(index);
+      selectedIds.delete(shapeId);
+      if (hoveredId === shapeId) {
+        hoveredId = null;
+      }
+      hideShapeControls(true); // Force close popup when shape is deleted
+      // A connector bound to the just-deleted shape is now dangling; remove it so it
+      // doesn't linger as an invisible (skipped-render) shape. The deletion syncs to
+      // peers, so only the deleting client needs to run this.
+      removeDanglingConnectors();
+    };
+    if (board.doc) board.doc.transact(run);
+    else run();
+  }
+}
+
+// Remove any connector whose endpoint no longer exists on the current board.
+// Deletes by index from the end so earlier indices stay valid. Idempotent, so two
+// peers cleaning up the same dangling connector converge safely.
+function removeDanglingConnectors() {
+  if (!canMutate()) return;
+  const board = boards.get(getCurrentBoard());
+  if (!board) return;
+  // Indices come back descending, so deleting in order keeps the rest valid.
+  for (const i of danglingConnectorIndices(board.toArray())) {
+    // Respect the lock invariant the rest of the app upholds: a locked connector
+    // is never auto-removed (it just renders nothing while an endpoint is gone).
+    if (!board.get(i)?.locked) board.delete(i);
   }
 }
 
@@ -1945,6 +2146,7 @@ function hitTestShape(x, y, shape, threshold = 8) {
              y >= shape.y - fs && y <= shape.y;
     }
 
+    case 'highlight':
     case 'freehand':
     case 'eraser': {
       if (!shape.points || shape.points.length < 2) return false;
@@ -1956,6 +2158,42 @@ function hitTestShape(x, y, shape, threshold = 8) {
         }
       }
       return false;
+    }
+
+    case 'arrow':
+      return pointToLineDistance(x, y, shape.startX, shape.startY, shape.x, shape.y) < sw;
+
+    case 'diamond':
+    case 'triangle': {
+      const b = getShapeBounds(shape);
+      // pointInPolygon covers the filled (interior) case too; bbox would wrongly
+      // hit the corners of a diamond/triangle that lie outside the shape.
+      return pointInPolygon(x, y, polygonPoints(shape.tool, b));
+    }
+
+    case 'ellipse': {
+      const b = getShapeBounds(shape);
+      const rx = b.width / 2 || 1, ry = b.height / 2 || 1;
+      const nx = (x - (b.x + rx)) / rx, ny = (y - (b.y + ry)) / ry;
+      const dist = Math.hypot(nx, ny);            // 1.0 == on the outline
+      const tol = sw / Math.min(rx, ry);          // stroke tolerance, normalized
+      if (shape.fillColor) return dist <= 1 + tol;
+      return Math.abs(dist - 1) < tol;
+    }
+
+    case 'sticky': {
+      const b = getShapeBounds(shape);
+      return x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + b.height;
+    }
+
+    case 'connector': {
+      const f = findShapeById(shape.fromId), t = findShapeById(shape.toId);
+      // Treat a connector-typed endpoint as missing: creation forbids it, but raw
+      // peer CRDT data has no schema, so this bounds recursion to depth 1.
+      if (!f || !t || f.tool === 'connector' || t.tool === 'connector') return false;
+      const p1 = resolveAnchor(getShapeBounds(f), shape.fromAnchor);
+      const p2 = resolveAnchor(getShapeBounds(t), shape.toAnchor);
+      return pointToLineDistance(x, y, p1.x, p1.y, p2.x, p2.y) < sw;
     }
 
     default:
@@ -2036,6 +2274,7 @@ export function getShapeBounds(shape) {
       };
     }
 
+    case 'highlight':
     case 'freehand':
     case 'eraser': {
       if (!shape.points || shape.points.length === 0) {
@@ -2056,9 +2295,56 @@ export function getShapeBounds(shape) {
       };
     }
 
+    case 'arrow':
+      return {
+        x: Math.min(shape.startX, shape.x),
+        y: Math.min(shape.startY, shape.y),
+        width: Math.abs(shape.x - shape.startX),
+        height: Math.abs(shape.y - shape.startY)
+      };
+
+    // diamond/triangle/ellipse/sticky are all bbox-based (startX,startY,width,height) —
+    // note ellipse is intentionally NOT center+radius like 'circle'.
+    case 'diamond':
+    case 'triangle':
+    case 'ellipse':
+    case 'sticky':
+      return {
+        x: Math.min(shape.startX, shape.startX + shape.width),
+        y: Math.min(shape.startY, shape.startY + shape.height),
+        width: Math.abs(shape.width),
+        height: Math.abs(shape.height)
+      };
+
+    case 'connector': {
+      const f = findShapeById(shape.fromId), t = findShapeById(shape.toId);
+      // A connector-typed endpoint (only reachable via raw peer CRDT data) is
+      // treated as missing, bounding this recursion to depth 1.
+      if (!f || !t || f.tool === 'connector' || t.tool === 'connector') return { x: 0, y: 0, width: 0, height: 0 };
+      const p1 = resolveAnchor(getShapeBounds(f), shape.fromAnchor);
+      const p2 = resolveAnchor(getShapeBounds(t), shape.toAnchor);
+      return { x: Math.min(p1.x, p2.x), y: Math.min(p1.y, p2.y),
+               width: Math.abs(p2.x - p1.x), height: Math.abs(p2.y - p1.y) };
+    }
+
     default:
       return { x: 0, y: 0, width: 0, height: 0 };
   }
+}
+
+// Bounds for the "Fit All" zoom. Delegates to getShapeBounds (the single source
+// of per-tool bbox) and applies fit-specific rules: connectors add no extent
+// beyond their already-included endpoints; an empty points-shape has no extent;
+// every other shape gets a min dimension of 1 so a zero-size shape can't collapse
+// the fit math. Returns null for shapes that should be skipped.
+export function getFitBounds(shape) {
+  if (shape.tool === 'connector') return null;
+  if ((shape.tool === 'freehand' || shape.tool === 'highlight' || shape.tool === 'eraser')
+      && (!shape.points || shape.points.length === 0)) {
+    return null;
+  }
+  const b = getShapeBounds(shape);
+  return { x: b.x, y: b.y, width: b.width || 1, height: b.height || 1 };
 }
 
 // ============ Drawing Functions ============
@@ -2151,8 +2437,9 @@ function redrawCanvas() {
   let hasOverlay = false;
 
   board.forEach((item) => {
-    // Skip if this is the shape being edited
-    if (editingTextId === item.id && item.tool === 'text') return;
+    // Skip the committed shape being edited (its live state is drawn in
+    // drawLocalTextPreview). Applies to both text and sticky notes.
+    if (editingTextId === item.id && (item.tool === 'text' || item.tool === 'sticky')) return;
 
     drawShape(item);
 
@@ -2168,6 +2455,9 @@ function redrawCanvas() {
 
   // Draw remote users' in-progress drawings (live preview)
   drawRemoteDrawings();
+
+  // Draw laser pointers (local + remote, ephemeral, awareness-only)
+  drawLasers();
 
   // Draw local text being created (live preview)
   drawLocalTextPreview();
@@ -2201,15 +2491,34 @@ function drawRemoteDrawings() {
     ctx.globalAlpha = 0.6; // Semi-transparent to show it's in-progress
     ctx.lineWidth = drawing.strokeWidth || 2;
 
-    if (drawing.tool === 'freehand' || drawing.tool === 'eraser') {
+    if (drawing.tool === 'highlight') {
+      ctx.globalAlpha = 0.35;
+      drawFreehand(drawing.points, drawing.color, drawing.strokeWidth || 2);
+    } else if (drawing.tool === 'freehand' || drawing.tool === 'eraser') {
       const color = drawing.tool === 'eraser' ? '#FFFFFF' : drawing.color;
       drawFreehand(drawing.points, color, drawing.strokeWidth || 2);
     } else if (drawing.tool === 'line') {
+      ctx.setLineDash(dashPattern(drawing.strokeStyle).map(d => d / viewport.zoom));
       drawLine(drawing.startX, drawing.startY, drawing.x, drawing.y, drawing.color);
+      ctx.setLineDash([]);
     } else if (drawing.tool === 'rect') {
+      ctx.setLineDash(dashPattern(drawing.strokeStyle).map(d => d / viewport.zoom));
       drawRect(drawing.startX, drawing.startY, drawing.width, drawing.height, drawing.color, drawing.fillColor);
+      ctx.setLineDash([]);
     } else if (drawing.tool === 'circle') {
+      ctx.setLineDash(dashPattern(drawing.strokeStyle).map(d => d / viewport.zoom));
       drawCircle(drawing.startX, drawing.startY, drawing.radius, drawing.color, drawing.fillColor);
+      ctx.setLineDash([]);
+    } else if (drawing.tool === 'arrow') {
+      drawArrow(drawing.startX, drawing.startY, drawing.x, drawing.y, drawing.color, drawing.strokeWidth || 2, drawing.strokeStyle, drawing.arrowHeads);
+    } else if (drawing.tool === 'diamond' || drawing.tool === 'triangle') {
+      const bx = Math.min(drawing.startX, drawing.startX + drawing.width);
+      const by = Math.min(drawing.startY, drawing.startY + drawing.height);
+      drawPolygon(drawing.tool, bx, by, Math.abs(drawing.width), Math.abs(drawing.height), drawing.color, drawing.strokeWidth || 2, drawing.strokeStyle, drawing.fillColor);
+    } else if (drawing.tool === 'ellipse') {
+      const bx = Math.min(drawing.startX, drawing.startX + drawing.width);
+      const by = Math.min(drawing.startY, drawing.startY + drawing.height);
+      drawEllipseShape(bx, by, Math.abs(drawing.width), Math.abs(drawing.height), drawing.color, drawing.strokeWidth || 2, drawing.strokeStyle, drawing.fillColor);
     } else if (drawing.tool === 'text' && drawing.text) {
       drawText(drawing.x, drawing.y, drawing.text, drawing.color, drawing.fontSize, drawing.fontFamily);
     }
@@ -2218,11 +2527,79 @@ function drawRemoteDrawings() {
   });
 }
 
+// Render local + remote laser pointers as a fading trail + glow dot. Ephemeral:
+// prunes the LOCAL trail by age here too, so it expires (and peers are notified
+// via clearLaser) even when the mouse stops moving. Self-schedules repaint while
+// any trail is alive so the fade animates without further input.
+function drawLasers() {
+  const now = Date.now();
+
+  // Expire the local trail even without mouse movement; notify peers when it dies.
+  if (laserTrail.length) {
+    laserTrail = pruneTrail(laserTrail, now);
+    if (laserTrail.length === 0) clearLaser();
+  }
+
+  const lasers = getRemoteLasers().map(l => ({ color: l.color, points: pruneTrail(l.points, now) }));
+  if (laserTrail.length) lasers.push({ color: getLocalUserColor(), points: laserTrail });
+
+  let anyActive = false;
+  for (const l of lasers) {
+    const pts = l.points;
+    if (!pts.length) continue;
+    anyActive = true;
+    const color = l.color || '#ff2d55';
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    // Fading trail
+    for (let i = 1; i < pts.length; i++) {
+      const age = (now - pts[i].t) / MAX_TRAIL_AGE_MS;
+      ctx.globalAlpha = Math.max(0, 1 - age) * 0.6;
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 4 / viewport.zoom;
+      ctx.beginPath();
+      ctx.moveTo(pts[i - 1].x, pts[i - 1].y);
+      ctx.lineTo(pts[i].x, pts[i].y);
+      ctx.stroke();
+    }
+    // Glowing head dot
+    const head = pts[pts.length - 1];
+    ctx.globalAlpha = 0.9;
+    ctx.fillStyle = color;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 12 / viewport.zoom;
+    ctx.beginPath();
+    ctx.arc(head.x, head.y, 5 / viewport.zoom, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  if (anyActive) {
+    if (!laserAnimating) {
+      laserAnimating = true;
+      requestAnimationFrame(() => { laserAnimating = false; redrawCanvas(); });
+    }
+  }
+}
+
 // Draw local text being created or edited (live preview for the creator)
 function drawLocalTextPreview() {
   if (!textInput) return;
 
   const text = textInput.value;
+
+  // Editing a sticky: redraw the note body + live text (the committed note is
+  // skipped during edit). Render even when text is empty so the body stays visible.
+  if (editingTextId) {
+    const shape = findShapeById(editingTextId);
+    if (shape && shape.tool === 'sticky') {
+      const b = getShapeBounds(shape);
+      drawSticky(b.x, b.y, b.width, b.height, shape.fillColor, text, shape.fontSize);
+      return;
+    }
+  }
+
   if (!text) return;
 
   // Handle new text creation
@@ -2249,17 +2626,60 @@ function drawShape(item) {
 
   ctx.lineWidth = sw;
 
+  // Legacy tools delegate to drawers that don't self-manage dashing; apply it here.
+  // (arrow/diamond/triangle/ellipse set their own dash inside their drawers.)
+  // 'highlight' is included so its (always-solid) dash state is explicitly reset,
+  // guaranteeing a highlight can never inherit a dash from a prior shape's draw.
+  const legacyDash = tool === 'line' || tool === 'rect' || tool === 'circle' || tool === 'freehand' || tool === 'highlight';
+  if (legacyDash) ctx.setLineDash(dashPattern(item.strokeStyle).map(d => d / viewport.zoom));
+
   if (tool === 'line') {
     drawLine(item.startX, item.startY, item.x, item.y, color);
   } else if (tool === 'rect') {
     drawRect(item.startX, item.startY, item.width, item.height, color, item.fillColor);
   } else if (tool === 'circle') {
     drawCircle(item.startX, item.startY, item.radius, color, item.fillColor);
+  } else if (tool === 'arrow') {
+    drawArrow(item.startX, item.startY, item.x, item.y, color, sw, item.strokeStyle, item.arrowHeads);
+  } else if (tool === 'diamond' || tool === 'triangle') {
+    const b = getShapeBounds(item);
+    drawPolygon(tool, b.x, b.y, b.width, b.height, color, sw, item.strokeStyle, item.fillColor);
+  } else if (tool === 'ellipse') {
+    const b = getShapeBounds(item);
+    drawEllipseShape(b.x, b.y, b.width, b.height, color, sw, item.strokeStyle, item.fillColor);
   } else if (tool === 'text') {
     drawText(item.x, item.y, item.text, color, item.fontSize, item.fontFamily);
+  } else if (tool === 'sticky') {
+    const b = getShapeBounds(item);
+    drawSticky(b.x, b.y, b.width, b.height, item.fillColor, item.text, item.fontSize);
+  } else if (tool === 'highlight') {
+    ctx.save();
+    ctx.globalAlpha = 0.35;
+    drawFreehand(item.points, color, sw);
+    ctx.restore();
   } else if (tool === 'freehand' || tool === 'eraser') {
     drawFreehand(item.points, color, sw);
+  } else if (tool === 'connector') {
+    const fromShape = findShapeById(item.fromId);
+    const toShape = findShapeById(item.toId);
+    // Skip if an endpoint is missing OR is itself a connector (raw peer CRDT data
+    // could reference one) — prevents resolve recursion past depth 1.
+    if (fromShape && toShape && fromShape.tool !== 'connector' && toShape.tool !== 'connector') {
+      const p1 = resolveAnchor(getShapeBounds(fromShape), item.fromAnchor);
+      const p2 = resolveAnchor(getShapeBounds(toShape), item.toAnchor);
+      // While dragging, an endpoint that is part of the selection hasn't been
+      // committed to the CRDT yet — offset its anchor by the live drag delta so
+      // the connector visually follows the ghost instead of lagging behind.
+      if (isDragging) {
+        if (selectedIds.has(item.fromId)) { p1.x += dragDX; p1.y += dragDY; }
+        if (selectedIds.has(item.toId)) { p2.x += dragDX; p2.y += dragDY; }
+      }
+      drawArrow(p1.x, p1.y, p2.x, p2.y, color, sw, item.strokeStyle, item.arrowHeads);
+    }
+    // else: dangling endpoint — skip render (cleanup handled elsewhere)
   }
+
+  if (legacyDash) ctx.setLineDash([]);
 }
 
 // Draw shape overlay in world space (selection box)
@@ -2313,11 +2733,43 @@ function drawShapePreview(shape, dx, dy) {
     drawRect(shape.startX + dx, shape.startY + dy, shape.width, shape.height, shape.color, shape.fillColor);
   } else if (shape.tool === 'circle') {
     drawCircle(shape.startX + dx, shape.startY + dy, shape.radius, shape.color, shape.fillColor);
+  } else if (shape.tool === 'arrow') {
+    drawArrow(shape.startX + dx, shape.startY + dy, shape.x + dx, shape.y + dy, shape.color, shape.strokeWidth || 2, shape.strokeStyle, shape.arrowHeads);
+  } else if (shape.tool === 'diamond' || shape.tool === 'triangle') {
+    const b = getShapeBounds(shape);
+    drawPolygon(shape.tool, b.x + dx, b.y + dy, b.width, b.height, shape.color, shape.strokeWidth || 2, shape.strokeStyle, shape.fillColor);
+  } else if (shape.tool === 'ellipse') {
+    const b = getShapeBounds(shape);
+    drawEllipseShape(b.x + dx, b.y + dy, b.width, b.height, shape.color, shape.strokeWidth || 2, shape.strokeStyle, shape.fillColor);
   } else if (shape.tool === 'text') {
     drawText(shape.x + dx, shape.y + dy, shape.text, shape.color, shape.fontSize, shape.fontFamily);
+  } else if (shape.tool === 'sticky') {
+    const b = getShapeBounds(shape);
+    drawSticky(b.x + dx, b.y + dy, b.width, b.height, shape.fillColor, shape.text, shape.fontSize);
+  } else if (shape.tool === 'highlight') {
+    // The function's outer save/restore (below) scopes this globalAlpha override.
+    const movedPoints = shape.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
+    ctx.globalAlpha = 0.35;
+    drawFreehand(movedPoints, shape.color, shape.strokeWidth || 2);
   } else if (shape.tool === 'freehand' || shape.tool === 'eraser') {
     const movedPoints = shape.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
     drawFreehand(movedPoints, shape.color, shape.strokeWidth || 2);
+  } else if (shape.tool === 'connector') {
+    // A connector has no own coordinates; it's anchored to its endpoints. Draw it
+    // at its resolved position. If a dragged endpoint is selected, offset that
+    // anchor by the live drag delta — same as drawShape — so this ghost overlaps
+    // the live render in redrawCanvas instead of trailing at the pre-drag spot.
+    const fromShape = findShapeById(shape.fromId);
+    const toShape = findShapeById(shape.toId);
+    if (fromShape && toShape && fromShape.tool !== 'connector' && toShape.tool !== 'connector') {
+      const p1 = resolveAnchor(getShapeBounds(fromShape), shape.fromAnchor);
+      const p2 = resolveAnchor(getShapeBounds(toShape), shape.toAnchor);
+      if (isDragging) {
+        if (selectedIds.has(shape.fromId)) { p1.x += dragDX; p1.y += dragDY; }
+        if (selectedIds.has(shape.toId)) { p2.x += dragDX; p2.y += dragDY; }
+      }
+      drawArrow(p1.x, p1.y, p2.x, p2.y, shape.color, shape.strokeWidth || 2, shape.strokeStyle, shape.arrowHeads);
+    }
   }
 
   ctx.restore();
@@ -2335,12 +2787,26 @@ function drawShapeCreationPreview(x, y) {
   ctx.lineWidth = strokeWidth;
 
   if (currentTool === 'line') {
+    ctx.setLineDash(dashPattern(currentStrokeStyle).map(d => d / viewport.zoom));
     drawLine(startX, startY, x, y, color);
+    ctx.setLineDash([]);
   } else if (currentTool === 'rect') {
+    ctx.setLineDash(dashPattern(currentStrokeStyle).map(d => d / viewport.zoom));
     drawRect(startX, startY, x - startX, y - startY, color, fillEnabled ? fillColor : null);
+    ctx.setLineDash([]);
   } else if (currentTool === 'circle') {
     const radius = Math.sqrt(Math.pow(x - startX, 2) + Math.pow(y - startY, 2));
+    ctx.setLineDash(dashPattern(currentStrokeStyle).map(d => d / viewport.zoom));
     drawCircle(startX, startY, radius, color, fillEnabled ? fillColor : null);
+    ctx.setLineDash([]);
+  } else if (currentTool === 'arrow') {
+    drawArrow(startX, startY, x, y, color, strokeWidth, currentStrokeStyle, currentArrowHeads);
+  } else if (currentTool === 'diamond' || currentTool === 'triangle') {
+    const bx = Math.min(startX, x), by = Math.min(startY, y);
+    drawPolygon(currentTool, bx, by, Math.abs(x - startX), Math.abs(y - startY), color, strokeWidth, currentStrokeStyle, fillEnabled ? fillColor : null);
+  } else if (currentTool === 'ellipse') {
+    const bx = Math.min(startX, x), by = Math.min(startY, y);
+    drawEllipseShape(bx, by, Math.abs(x - startX), Math.abs(y - startY), color, strokeWidth, currentStrokeStyle, fillEnabled ? fillColor : null);
   }
 
   ctx.restore();
@@ -2360,7 +2826,7 @@ function drawFreehandPreview() {
   ctx.save();
   ctx.scale(viewport.zoom, viewport.zoom);
   ctx.translate(-viewport.x, -viewport.y);
-  ctx.globalAlpha = 0.7;
+  ctx.globalAlpha = currentTool === 'highlight' ? 0.35 : 0.7;
   drawFreehand(freehandPoints, color, sw);
   ctx.restore();
 }
@@ -2395,9 +2861,95 @@ function drawCircle(x, y, radius, color, fillColor) {
   ctx.stroke();
 }
 
+function drawArrow(startX, startY, x, y, color, sw, strokeStyle, arrowHeads) {
+  const headLen = Math.max(8, (sw || 2) * 3);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = sw || 2;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  // Shaft honors the stroke style
+  ctx.setLineDash(dashPattern(strokeStyle).map(d => d / viewport.zoom));
+  ctx.beginPath();
+  ctx.moveTo(startX, startY);
+  ctx.lineTo(x, y);
+  ctx.stroke();
+  // Arrowheads are always solid
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  for (const p of arrowHeadPoints(startX, startY, x, y, headLen)) {
+    ctx.moveTo(x, y); ctx.lineTo(p.x, p.y);
+  }
+  if (arrowHeads === 'both') {
+    for (const p of arrowHeadPoints(x, y, startX, startY, headLen)) {
+      ctx.moveTo(startX, startY); ctx.lineTo(p.x, p.y);
+    }
+  }
+  ctx.stroke();
+}
+
+// x,y,width,height is a normalized bbox (non-negative w/h).
+function drawPolygon(tool, x, y, width, height, color, sw, strokeStyle, fillColor) {
+  const pts = polygonPoints(tool, { x, y, width, height });
+  if (!pts.length) return;
+  ctx.lineWidth = sw || 2;
+  ctx.lineJoin = 'round';
+  ctx.setLineDash(dashPattern(strokeStyle).map(d => d / viewport.zoom));
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.closePath();
+  if (fillColor) { ctx.fillStyle = fillColor; ctx.fill(); }
+  ctx.strokeStyle = color;
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function drawEllipseShape(x, y, width, height, color, sw, strokeStyle, fillColor) {
+  const cx = x + width / 2, cy = y + height / 2;
+  const rx = Math.abs(width / 2) || 0.01, ry = Math.abs(height / 2) || 0.01;
+  ctx.lineWidth = sw || 2;
+  ctx.setLineDash(dashPattern(strokeStyle).map(d => d / viewport.zoom));
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+  if (fillColor) { ctx.fillStyle = fillColor; ctx.fill(); }
+  ctx.strokeStyle = color;
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+// Render a sticky note: rounded filled rect + word-wrapped text. Text is drawn
+// with canvas fillText (NEVER innerHTML — it is untrusted peer data). save/restore
+// so font/textBaseline/fillStyle never leak into other shapes' draws.
+function drawSticky(x, y, width, height, fillColor, text, fontSize) {
+  const pad = 12;
+  ctx.save();
+  ctx.fillStyle = fillColor || '#fff8b8';
+  ctx.beginPath();
+  if (ctx.roundRect) ctx.roundRect(x, y, width, height, 6);
+  else ctx.rect(x, y, width, height);
+  ctx.fill();
+  if (text) {
+    const fs = fontSize || 16;
+    ctx.fillStyle = '#1a1a1a';
+    ctx.font = `${fs}px Inter, sans-serif`;
+    ctx.textBaseline = 'top';
+    // Cap length before wrapping: a peer could inject an enormous single "word",
+    // and wrapText's per-char hard-break does an O(n) measureText scan per line.
+    // No real note exceeds this, and only what fits the note height renders anyway.
+    const capped = text.length > 4000 ? text.slice(0, 4000) : text;
+    const lines = wrapText((s) => ctx.measureText(s).width, capped, width - pad * 2);
+    for (let i = 0; i < lines.length; i++) {
+      const ly = y + pad + i * (fs * 1.3);
+      if (ly + fs <= y + height - pad) ctx.fillText(lines[i], x + pad, ly);
+    }
+  }
+  ctx.restore();
+}
+
 function drawText(x, y, text, color, size = 20, family = 'Arial') {
   ctx.fillStyle = color;
   ctx.font = `${size}px ${family}`;
+  ctx.textBaseline = 'alphabetic'; // explicit: don't inherit a baseline left by another draw
   ctx.fillText(text, x, y);
 }
 
