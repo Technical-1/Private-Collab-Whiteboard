@@ -42,6 +42,7 @@ describe('laser awareness', () => {
     initializeAwareness(aw, 'Tester');
     aw._setRemote(2, { user: { id: 'u2', color: '#f00', laser: [{ x: 5, y: 5, t: 1 }] } });
     aw._setRemote(3, { user: { id: 'u3', color: '#0f0', laser: null } });
+    aw._setRemote(4, { user: { id: 'u4', color: '#00f', laser: [] } }); // empty trail excluded
     const lasers = getRemoteLasers();
     expect(lasers).toHaveLength(1);
     expect(lasers[0]).toMatchObject({ color: '#f00' });
