@@ -1116,6 +1116,9 @@ body {
   height: 10px;
   border-radius: 50%;
   flex-shrink: 0;
+  /* Per-user color set via the --user-color CSSOM property (CSP-safe; was an
+     inline style="background-color" attribute). */
+  background-color: var(--user-color, #888);
 }
 
 .user-name {
@@ -1460,6 +1463,9 @@ canvas {
   color: white;
   white-space: nowrap;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  /* Color comes from the parent .remote-cursor's --cursor-color CSSOM property
+     (CSP-safe; was an inline style="background-color" attribute). */
+  background-color: var(--cursor-color, #888);
 }
 
 /* ============================================
@@ -2723,3 +2729,300 @@ body:not(.read-only-mode) .read-only-banner {
     display: none;
   }
 }
+
+/* ===== Boards page styles =====
+   Moved from an inline <style> block in boards.html so the CSP can drop
+   style-src 'unsafe-inline'. These are class-scoped (.boards-*). */
+    .boards-page {
+      min-height: 100vh;
+      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+      color: #f8fafc;
+    }
+
+    .boards-header {
+      background: rgba(0, 0, 0, 0.2);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 16px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .boards-header h1 {
+      font-size: 1.5rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .boards-header h1 svg {
+      opacity: 0.8;
+    }
+
+    .header-actions {
+      display: flex;
+      gap: 12px;
+    }
+
+    .btn {
+      padding: 10px 20px;
+      border-radius: 8px;
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border: none;
+    }
+
+    .btn-primary {
+      background: #6366f1;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #4f46e5;
+    }
+
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.1);
+      color: #f8fafc;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    .btn-danger {
+      background: rgba(239, 68, 68, 0.2);
+      color: #f87171;
+      border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+
+    .btn-danger:hover {
+      background: rgba(239, 68, 68, 0.3);
+    }
+
+    .boards-container {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 32px 24px;
+    }
+
+    .boards-stats {
+      display: flex;
+      gap: 24px;
+      margin-bottom: 32px;
+    }
+
+    .stat-card {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      padding: 20px 24px;
+      flex: 1;
+    }
+
+    .stat-value {
+      font-size: 2rem;
+      font-weight: 700;
+      color: #6366f1;
+    }
+
+    .stat-label {
+      font-size: 0.85rem;
+      color: #94a3b8;
+      margin-top: 4px;
+    }
+
+    .boards-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .board-card {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 12px;
+      padding: 20px 24px;
+      display: flex;
+      align-items: center;
+      gap: 20px;
+      transition: all 0.2s;
+    }
+
+    .board-card:hover {
+      background: rgba(255, 255, 255, 0.08);
+      border-color: rgba(99, 102, 241, 0.3);
+    }
+
+    .board-icon {
+      width: 48px;
+      height: 48px;
+      background: rgba(99, 102, 241, 0.2);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+
+    .board-icon svg {
+      color: #6366f1;
+    }
+
+    .board-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .board-name {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #f8fafc;
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .board-name .encrypted-badge {
+      background: rgba(16, 185, 129, 0.2);
+      color: #10b981;
+      font-size: 0.7rem;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-weight: 500;
+    }
+
+    .board-meta {
+      font-size: 0.85rem;
+      color: #94a3b8;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 16px;
+    }
+
+    .board-meta span {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .role-badge {
+      padding: 4px 12px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      font-weight: 500;
+    }
+
+    .role-owner {
+      background: rgba(16, 185, 129, 0.2);
+      color: #10b981;
+    }
+
+    .role-collaborator {
+      background: rgba(99, 102, 241, 0.2);
+      color: #818cf8;
+    }
+
+    .role-viewer {
+      background: rgba(113, 113, 122, 0.2);
+      color: #a1a1aa;
+    }
+
+    .board-actions {
+      display: flex;
+      gap: 8px;
+      flex-shrink: 0;
+    }
+
+    .board-actions .btn {
+      padding: 8px 16px;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 80px 24px;
+    }
+
+    .empty-state svg {
+      width: 80px;
+      height: 80px;
+      color: #475569;
+      margin-bottom: 24px;
+    }
+
+    .empty-state h2 {
+      font-size: 1.5rem;
+      color: #f8fafc;
+      margin-bottom: 12px;
+    }
+
+    .empty-state p {
+      color: #94a3b8;
+      margin-bottom: 32px;
+      max-width: 400px;
+      margin-left: auto;
+      margin-right: auto;
+    }
+
+    .clear-all-section {
+      margin-top: 48px;
+      padding-top: 32px;
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
+      text-align: center;
+    }
+
+    .clear-all-section p {
+      color: #94a3b8;
+      font-size: 0.85rem;
+      margin-bottom: 16px;
+    }
+
+    @media (max-width: 768px) {
+      .boards-stats {
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .board-card {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+
+      .board-actions {
+        width: 100%;
+        justify-content: flex-end;
+      }
+
+      .header-actions {
+        flex-direction: column;
+        gap: 8px;
+      }
+    }
+
+/* ===== CSP-safe utilities =====
+   Replace inline style="" attributes so the CSP can drop style-src
+   'unsafe-inline'. .u-hidden is an initial-hidden state; JS that shows these
+   elements sets element.style.display (CSSOM), which overrides this class. */
+.u-hidden { display: none; }
+
+/* Browser-not-supported fallback page (was inline styles in app.js). */
+.browser-unsupported {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  padding: 20px;
+  text-align: center;
+  font-family: system-ui, sans-serif;
+}
+.browser-unsupported__inner { max-width: 500px; }
+.browser-unsupported__title { color: #ef4444; margin-bottom: 16px; }
+.browser-unsupported__msg { color: #71717a; white-space: pre-line; }

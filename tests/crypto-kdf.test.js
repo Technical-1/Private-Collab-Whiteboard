@@ -29,3 +29,23 @@ describe('deriveKey iteration parameter', () => {
     expect([...(await decrypt(ct, kExplicit))]).toEqual([7]);
   });
 });
+
+describe('deriveKey explicit salt', () => {
+  it('uses an explicit salt when provided (different salt => different key)', async () => {
+    const data = new Uint8Array([9, 8, 7]);
+    const kSaltA = await deriveKey('pw', 'room', 120000, 'AAAAAAAAAAAAAAAAAAAAAA==');
+    const kSaltB = await deriveKey('pw', 'room', 120000, 'BBBBBBBBBBBBBBBBBBBBBB==');
+    const ct = await encrypt(data, kSaltA);
+    // A key from a different salt must NOT decrypt A's ciphertext.
+    await expect(decrypt(ct, kSaltB)).rejects.toBeTruthy();
+  });
+
+  it('falls back to the legacy room-id salt when no salt is given', async () => {
+    // Same password+room+iterations with no explicit salt must round-trip,
+    // matching the historical behavior (salt = `whiteboard-${roomId}`).
+    const k1 = await deriveKey('pw', 'room', 120000);
+    const k2 = await deriveKey('pw', 'room', 120000, null);
+    const ct = await encrypt(new Uint8Array([1]), k1);
+    expect([...(await decrypt(ct, k2))]).toEqual([1]);
+  });
+});

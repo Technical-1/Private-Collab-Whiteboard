@@ -1,23 +1,33 @@
 import { generateRoomId } from './utils.js';
 import { generateSigningKeyPair, exportPublicKey, exportPrivateKey } from './crypto.js';
 import { mintCert } from './room-cert.js';
-import { PBKDF2_ITERATIONS, LEGACY_PBKDF2_ITERATIONS } from './config.js';
+import { PBKDF2_ITERATIONS, LEGACY_PBKDF2_ITERATIONS, MAX_PBKDF2_ITERATIONS, SALT_LENGTH } from './config.js';
 
 function encodeLink(obj) {
   return btoa(encodeURIComponent(JSON.stringify(obj)));
 }
 
+// 16 random bytes, base64 — a per-room PBKDF2 salt carried in the capability
+// link so the same password in the same room no longer maps to a precomputable
+// key (the room id alone is public and shared in URLs).
+function randomSaltB64() {
+  const bytes = crypto.getRandomValues(new Uint8Array(SALT_LENGTH));
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin);
+}
+
 /** Owner link: full authority (skO + skE + cert). */
 export function encodeOwnerLink(cap) {
-  return encodeLink({ v: 3, r: 'owner', e: cap.epoch, p: cap.password, kdf: cap.kdf, pkO: cap.pkO, skO: cap.skO, pkE: cap.pkE, skE: cap.skE, cert: cap.cert });
+  return encodeLink({ v: 3, r: 'owner', e: cap.epoch, p: cap.password, kdf: cap.kdf, salt: cap.salt, pkO: cap.pkO, skO: cap.skO, pkE: cap.pkE, skE: cap.skE, cert: cap.cert });
 }
 /** Editor link: can edit, cannot rotate (no skO). */
 export function encodeEditorLink(cap) {
-  return encodeLink({ v: 3, r: 'edit', e: cap.epoch, p: cap.password, kdf: cap.kdf, pkO: cap.pkO, pkE: cap.pkE, skE: cap.skE, cert: cap.cert });
+  return encodeLink({ v: 3, r: 'edit', e: cap.epoch, p: cap.password, kdf: cap.kdf, salt: cap.salt, pkO: cap.pkO, pkE: cap.pkE, skE: cap.skE, cert: cap.cert });
 }
 /** Viewer link: read-only (no private keys). */
 export function encodeViewerLink(cap) {
-  return encodeLink({ v: 3, r: 'view', e: cap.epoch, p: cap.password, kdf: cap.kdf, pkO: cap.pkO, pkE: cap.pkE, cert: cap.cert });
+  return encodeLink({ v: 3, r: 'view', e: cap.epoch, p: cap.password, kdf: cap.kdf, salt: cap.salt, pkO: cap.pkO, pkE: cap.pkE, cert: cap.cert });
 }
 
 /**
@@ -33,9 +43,18 @@ export function decodeCapabilityToken(token) {
     const role = hasOwner ? 'owner' : hasEditor ? 'edit' : 'view';
     return {
       version: 3, role, epoch: d.e, password: d.p,
-      // Links minted before KDF hardening have no `kdf`; fall back to the legacy
-      // count so existing rooms still derive a matching key.
-      kdf: typeof d.kdf === 'number' ? d.kdf : LEGACY_PBKDF2_ITERATIONS,
+      // Clamp the attacker-supplied iteration count to [floor, ceiling]. A
+      // tampered link cannot downgrade key derivation below the legacy count.
+      kdf: Math.min(
+        Math.max(
+          Number.isInteger(d.kdf) ? d.kdf : LEGACY_PBKDF2_ITERATIONS,
+          LEGACY_PBKDF2_ITERATIONS
+        ),
+        MAX_PBKDF2_ITERATIONS
+      ),
+      // Per-room salt (absent on pre-salt links => null => deriveKey uses the
+      // legacy room-id salt).
+      salt: typeof d.salt === 'string' ? d.salt : null,
       pkO: d.pkO, pkE: d.pkE,
       skO: hasOwner ? d.skO : null,
       skE: hasEditor ? d.skE : null,
@@ -55,7 +74,8 @@ export async function mintRoomCapability(password) {
   const pkE = await exportPublicKey(editor.publicKey);
   const skE = await exportPrivateKey(editor.privateKey);
   const cert = await mintCert(skO, pkO, 1, pkE);
-  return { version: 3, role: 'owner', epoch: 1, password, kdf: PBKDF2_ITERATIONS, pkO, skO, pkE, skE, cert };
+  const salt = randomSaltB64();
+  return { version: 3, role: 'owner', epoch: 1, password, kdf: PBKDF2_ITERATIONS, salt, pkO, skO, pkE, skE, cert };
 }
 
 /** Build the '#' hash for a capability at the requested role (owner downgrades to edit/view). */
@@ -76,11 +96,27 @@ export async function rotateCapability(ownerCap, newPassword) {
   return { ...ownerCap, role: 'owner', epoch, password: newPassword, pkE, skE, cert };
 }
 
-/** Read the capability from the URL hash (null for unencrypted rooms). */
+/**
+ * Parse a URL hash into a capability.
+ *  - no fragment        -> null  (intentional open room)
+ *  - present but bad    -> THROWS (tampered/truncated link; do not silently
+ *                          fall back to open-room editor mode)
+ *  - present and valid  -> capability object
+ */
+export function parseCapabilityHash(hash) {
+  if (!hash || hash.length <= 1) return null;
+  const cap = decodeCapabilityToken(hash.substring(1));
+  if (cap === null) throw new Error('Invalid or tampered capability link');
+  return cap;
+}
+
+/** Non-throwing read used by the helper graph (null for open OR malformed). */
 export function getCapabilityFromUrl() {
-  const hash = window.location.hash;
-  if (hash && hash.length > 1) return decodeCapabilityToken(hash.substring(1));
-  return null;
+  try {
+    return parseCapabilityHash(window.location.hash);
+  } catch {
+    return null;
+  }
 }
 
 /** @returns {'owner'|'edit'|'view'} */
@@ -98,15 +134,19 @@ export async function createRoom(password = null) {
   }
 }
 
-export async function joinRoom(roomId, password = null) {
-  if (!roomId || !roomId.trim()) return;
-  const cleanRoomId = roomId.trim();
-  if (password) {
-    const cap = await mintRoomCapability(password);
-    window.location.href = `/room/${cleanRoomId}#${encodeCapabilityHash(cap, 'owner')}`;
-  } else {
-    window.location.href = `/room/${cleanRoomId}`;
-  }
+// Capability (password-protected) rooms can ONLY be joined via a shared link
+// that already carries the room's cert + keys. Deriving a new capability from
+// just roomId+password would mint an unrelated owner keypair and drop the user
+// into an isolated ghost room. So joining is always a bare navigation; the
+// password (if any) is intentionally ignored here.
+export function joinRoomPath(roomId, _password = null) {
+  if (!roomId || !roomId.trim()) return null;
+  return `/room/${roomId.trim()}`;
+}
+
+export function joinRoom(roomId, password = null) {
+  const path = joinRoomPath(roomId, password);
+  if (path) window.location.href = path;
 }
 
 /**

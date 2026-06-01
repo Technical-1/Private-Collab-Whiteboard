@@ -11,6 +11,7 @@ import { setupBoardManager, setBoardsContainer } from './boards.js';
 import {
   getRoomIdFromUrl,
   getCapabilityFromUrl,
+  parseCapabilityHash,
   getShareableLink,
   copyToClipboard,
   isEncryptedRoom,
@@ -65,6 +66,20 @@ async function main() {
   // Get room ID from URL
   const roomId = getRoomIdFromUrl();
   if (!roomId) {
+    window.location.href = '/';
+    return;
+  }
+
+  // Reject a present-but-unparseable fragment before going further. A missing
+  // fragment (open room) is fine; only a *tampered/truncated* one triggers this.
+  // getCapabilityFromUrl() below is kept as a non-throwing fallback for helpers.
+  try {
+    parseCapabilityHash(window.location.hash);
+  } catch {
+    await showAlert(
+      'Invalid Link',
+      'This board link is invalid or has been tampered with. Ask the owner for a fresh link.'
+    );
     window.location.href = '/';
     return;
   }
@@ -1065,10 +1080,10 @@ function checkBrowserCompatibility() {
   if (missing.length > 0) {
     const message = `Your browser is missing required features:\n\n• ${missing.join('\n• ')}\n\nPlease use a modern browser like Chrome, Firefox, Safari, or Edge.`;
     document.body.innerHTML = `
-      <div style="display: flex; align-items: center; justify-content: center; height: 100vh; padding: 20px; text-align: center; font-family: system-ui, sans-serif;">
-        <div style="max-width: 500px;">
-          <h2 style="color: #ef4444; margin-bottom: 16px;">Browser Not Supported</h2>
-          <p style="color: #71717a; white-space: pre-line;">${message}</p>
+      <div class="browser-unsupported">
+        <div class="browser-unsupported__inner">
+          <h2 class="browser-unsupported__title">Browser Not Supported</h2>
+          <p class="browser-unsupported__msg">${message}</p>
         </div>
       </div>
     `;

@@ -6,6 +6,7 @@
       getRoleInfo,
       getBoardCount
     } from '/js/board-history.js';
+    import { escapeHtml } from '/js/utils.js';
 
     function renderBoards() {
       const container = document.getElementById('boards-content');
@@ -62,7 +63,7 @@
         const roleClass = `role-${board.role}`;
 
         html += `
-          <div class="board-card" data-room-id="${board.roomId}">
+          <div class="board-card" data-room-id="${escapeHtml(board.roomId)}">
             <div class="board-icon">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <rect x="3" y="3" width="18" height="18" rx="2"/>
@@ -94,13 +95,13 @@
             </div>
             <span class="role-badge ${roleClass}">${roleInfo.label}</span>
             <div class="board-actions">
-              <button class="btn btn-danger btn-remove" data-room-id="${board.roomId}" title="Remove from history">
+              <button class="btn btn-danger btn-remove" data-room-id="${escapeHtml(board.roomId)}" title="Remove from history">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <polyline points="3 6 5 6 21 6"/>
                   <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
                 </svg>
               </button>
-              <a href="/room/${board.roomId}${board.isEncrypted ? '' : ''}" class="btn btn-primary">
+              <a href="/room/${escapeHtml(board.roomId)}${board.isEncrypted ? '' : ''}" class="btn btn-primary">
                 Open
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <path d="M5 12h14M12 5l7 7-7 7"/>
@@ -146,12 +147,6 @@
           renderBoards();
         }
       });
-    }
-
-    function escapeHtml(text) {
-      const div = document.createElement('div');
-      div.textContent = text;
-      return div.innerHTML;
     }
 
     // Initial render

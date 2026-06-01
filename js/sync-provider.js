@@ -14,6 +14,13 @@ import * as encoding from 'lib0/encoding';
 import * as decoding from 'lib0/decoding';
 import { MSG } from './protocol.js';
 
+// ws:// (cleartext) is allowed ONLY for canonical loopback dev hosts. The old
+// heuristic also treated any dotless hostname as local, which would silently
+// downgrade a non-loopback short name (e.g. an intranet host) to cleartext.
+export function isLocalHost(host) {
+  return host === 'localhost' || host === '127.0.0.1' || host === '0.0.0.0';
+}
+
 export class SyncProvider {
   /**
    * @param {string} serverUrl - PartyKit server URL
@@ -92,15 +99,10 @@ export class SyncProvider {
     this.wsconnecting = true;
     this._onStatus({ status: 'connecting' });
 
-    // Build WebSocket URL. Use insecure ws:// only for local dev hosts;
-    // everything else (real domains) must use wss://.
+    // Build WebSocket URL. Use insecure ws:// only for canonical loopback hosts;
+    // everything else (real domains, dotless intranet names) must use wss://.
     const host = this.serverUrl.split(':')[0];
-    const isLocal =
-      host === 'localhost' ||
-      host === '127.0.0.1' ||
-      host === '0.0.0.0' ||
-      !host.includes('.');
-    const protocol = isLocal ? 'ws' : 'wss';
+    const protocol = isLocalHost(host) ? 'ws' : 'wss';
     const wsUrl = `${protocol}://${this.serverUrl}/party/${this.roomId}`;
 
     this.ws = new WebSocket(wsUrl);

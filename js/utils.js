@@ -55,9 +55,32 @@ export function safeNumber(value, fallback) {
   return fallback;
 }
 
+// Allowlist of tool names the app actually produces. shape.tool arrives from
+// untrusted peers via the shared CRDT and is interpolated into innerHTML when
+// building the shape-settings popup header, so any value outside this set
+// collapses to the inert literal 'shape'. Mirrors safeColor/safeNumber.
+const KNOWN_TOOLS = ['line', 'rect', 'circle', 'text', 'freehand', 'eraser'];
+
+export function safeToolName(value) {
+  return typeof value === 'string' && KNOWN_TOOLS.includes(value) ? value : 'shape';
+}
+
 // Generate a room ID (16 hex chars)
 export function generateRoomId() {
   return Array.from(crypto.getRandomValues(new Uint8Array(8)))
     .map(b => b.toString(16).padStart(2, '0'))
     .join('');
+}
+
+// Single source of truth for HTML escaping. Escapes the five characters that
+// matter in both text and attribute contexts (modal.js and awareness.js had
+// their own copies; boards-home.js had one MISSING the quotes — that drift is
+// why this lives here now). Coerces non-strings so callers can pass anything.
+export function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }

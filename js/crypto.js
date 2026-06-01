@@ -21,8 +21,12 @@ import { PBKDF2_ITERATIONS, IV_LENGTH } from './config.js';
  * @param {string} roomId - Room ID (used as salt to make keys room-specific)
  * @returns {Promise<CryptoKey>} - AES-GCM key for encrypt/decrypt
  */
-export async function deriveKey(password, roomId, iterations = PBKDF2_ITERATIONS) {
+export async function deriveKey(password, roomId, iterations = PBKDF2_ITERATIONS, saltB64 = null) {
   const encoder = new TextEncoder();
+  // Per-room random salt (carried in the capability link) when present;
+  // otherwise the legacy deterministic salt so pre-salt rooms still derive the
+  // same key. base64ToBytes is defined below in this module.
+  const salt = saltB64 ? base64ToBytes(saltB64) : encoder.encode(`whiteboard-${roomId}`);
 
   // Import password as raw key material
   const keyMaterial = await crypto.subtle.importKey(
@@ -39,7 +43,7 @@ export async function deriveKey(password, roomId, iterations = PBKDF2_ITERATIONS
   return crypto.subtle.deriveKey(
     {
       name: 'PBKDF2',
-      salt: encoder.encode(`whiteboard-${roomId}`),
+      salt,
       iterations,
       hash: 'SHA-256'
     },
@@ -110,9 +114,9 @@ export async function decrypt(data, key) {
  * @param {string} roomId - Room ID
  * @returns {Promise<boolean>} - True if password is correct
  */
-export async function verifyPassword(encryptedTestData, password, roomId, iterations = PBKDF2_ITERATIONS) {
+export async function verifyPassword(encryptedTestData, password, roomId, iterations = PBKDF2_ITERATIONS, saltB64 = null) {
   try {
-    const key = await deriveKey(password, roomId, iterations);
+    const key = await deriveKey(password, roomId, iterations, saltB64);
     await decrypt(encryptedTestData, key);
     return true;
   } catch {

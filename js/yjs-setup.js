@@ -70,7 +70,7 @@ export async function initializeYjs(roomId, capability = null) {
   let encryptionKey = null, encryptFn = null, decryptFn = null;
   if (password) {
     // Use the iteration count carried in the capability so all peers agree.
-    encryptionKey = await deriveKey(password, roomId, capability.kdf);
+    encryptionKey = await deriveKey(password, roomId, capability.kdf, capability.salt);
     encryptFn = encrypt; decryptFn = decrypt;
   }
 

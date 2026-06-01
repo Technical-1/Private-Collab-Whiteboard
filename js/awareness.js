@@ -1,4 +1,4 @@
-import { generateUserId, assignColor, safeColor } from './utils.js';
+import { generateUserId, assignColor, safeColor, escapeHtml } from './utils.js';
 import { getViewport } from './drawing.js';
 import { CURSOR_UPDATE_INTERVAL } from './config.js';
 
@@ -239,8 +239,11 @@ function renderUsers(awareness) {
     // Untrusted: sanitize the peer-supplied color before it hits innerHTML.
     const color = safeColor(user.color);
 
+    // Set the color via CSSOM (CSP-safe) so .user-color reads it from var();
+    // avoids an inline style="" attribute that would need style-src 'unsafe-inline'.
+    userEl.style.setProperty('--user-color', color);
     userEl.innerHTML = `
-      <span class="user-color" style="background-color: ${color}"></span>
+      <span class="user-color"></span>
       <span class="user-name">${escapeHtml(user.name)}${isLocal ? ' (you)' : ''}</span>
     `;
     usersContainer.appendChild(userEl);
@@ -299,17 +302,10 @@ function renderCursors(awareness) {
       <svg width="24" height="24" viewBox="0 0 24 24" fill="${color}">
         <path d="M5.5 3.21V20.8c0 .45.54.67.85.35l4.86-4.86a.5.5 0 0 1 .35-.15h6.87c.48 0 .72-.58.38-.92L5.94 2.35a.5.5 0 0 0-.44.86z"/>
       </svg>
-      <span class="cursor-label" style="background-color: ${color}">${escapeHtml(user.name)}</span>
+      <span class="cursor-label">${escapeHtml(user.name)}</span>
     `;
 
     cursorsContainer.appendChild(cursorEl);
   });
 }
 
-function escapeHtml(text) {
-  const div = document.createElement('div');
-  div.textContent = text;
-  // Escape quotes too (textContent->innerHTML leaves them) so the result is
-  // safe in both element-text and quoted-attribute contexts.
-  return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
