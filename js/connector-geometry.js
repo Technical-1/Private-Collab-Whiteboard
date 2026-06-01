@@ -26,3 +26,15 @@ export function nearestAnchors(a, b) {
 export function isDangling(conn, idSet) {
   return !idSet.has(conn.fromId) || !idSet.has(conn.toId);
 }
+
+// Indices of connectors in `items` whose endpoint no longer exists, returned in
+// DESCENDING order so a caller can delete them in sequence without invalidating
+// the remaining indices. Pure: the caller does the actual Y.Array deletion.
+export function danglingConnectorIndices(items) {
+  const ids = new Set(items.map(s => s.id));
+  const out = [];
+  for (let i = items.length - 1; i >= 0; i--) {
+    if (items[i].tool === 'connector' && isDangling(items[i], ids)) out.push(i);
+  }
+  return out;
+}

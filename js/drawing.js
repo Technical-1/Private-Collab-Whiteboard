@@ -17,7 +17,7 @@ import {
 } from './awareness.js';
 import { pruneTrail, MAX_TRAIL_AGE_MS } from './laser-trail.js';
 import { showAlert } from './modal.js';
-import { resolveAnchor, nearestAnchors, isDangling } from './connector-geometry.js';
+import { resolveAnchor, nearestAnchors, danglingConnectorIndices } from './connector-geometry.js';
 import { ZOOM_MIN, ZOOM_MAX, HIT_TEST_THRESHOLD } from './config.js';
 
 let canvas = null;
@@ -1915,13 +1915,9 @@ function removeDanglingConnectors() {
   if (!canMutate()) return;
   const board = boards.get(getCurrentBoard());
   if (!board) return;
-  const items = board.toArray();
-  const ids = new Set(items.map(s => s.id));
-  for (let i = items.length - 1; i >= 0; i--) {
-    const s = items[i];
-    if (s.tool === 'connector' && isDangling(s, ids)) {
-      board.delete(i, 1);
-    }
+  // Indices come back descending, so deleting in order keeps the rest valid.
+  for (const i of danglingConnectorIndices(board.toArray())) {
+    board.delete(i);
   }
 }
 

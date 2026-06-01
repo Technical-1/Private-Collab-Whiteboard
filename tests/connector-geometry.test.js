@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveAnchor, nearestAnchors, isDangling } from '../js/connector-geometry.js';
+import { resolveAnchor, nearestAnchors, isDangling, danglingConnectorIndices } from '../js/connector-geometry.js';
 
 const bbox = { x: 0, y: 0, width: 10, height: 20 };
 
@@ -52,5 +52,26 @@ describe('isDangling', () => {
   it('true when an endpoint key is absent entirely', () => {
     expect(isDangling({ toId: 'b' }, ids)).toBe(true);      // no fromId
     expect(isDangling({ fromId: 'a' }, ids)).toBe(true);    // no toId
+  });
+});
+
+describe('danglingConnectorIndices', () => {
+  it('returns indices of connectors with a missing endpoint, descending', () => {
+    const items = [
+      { id: 'a', tool: 'rect' },
+      { id: 'c1', tool: 'connector', fromId: 'a', toId: 'gone' }, // dangling
+      { id: 'b', tool: 'rect' },
+      { id: 'c2', tool: 'connector', fromId: 'a', toId: 'b' },    // healthy
+      { id: 'c3', tool: 'connector', fromId: 'x', toId: 'b' },    // dangling
+    ];
+    expect(danglingConnectorIndices(items)).toEqual([4, 1]); // descending order
+  });
+  it('returns [] when all connectors are healthy and ignores non-connectors', () => {
+    const items = [
+      { id: 'a', tool: 'rect' },
+      { id: 'b', tool: 'circle' },
+      { id: 'c', tool: 'connector', fromId: 'a', toId: 'b' },
+    ];
+    expect(danglingConnectorIndices(items)).toEqual([]);
   });
 });
