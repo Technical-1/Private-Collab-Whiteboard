@@ -180,6 +180,9 @@ export class SignedDocSync {
   }
 
   async _answerSnapshotRequest() {
+    // After rotation this peer holds only stale epoch-N state; never relay it as
+    // bootstrap to a new joiner (who may not have the rotate notice yet).
+    if (this._superseded) return;
     // Editors produce a fresh snapshot; anyone with a cached one relays it.
     if (this.isEditor) { await this.emitSnapshot(); return; }
     if (this._latestSnapshot) this.transport.send(MSG.SNAPSHOT, this._latestSnapshot.payload);

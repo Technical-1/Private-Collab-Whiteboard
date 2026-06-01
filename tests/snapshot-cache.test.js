@@ -58,3 +58,38 @@ describe('snapshot cache persistence', () => {
     expect(docV.getMap('boards').get('k')).toBe('v');
   });
 });
+
+function spyTransport() {
+  const sent = [];
+  return { sent, send(type, payload) { sent.push({ type, payload }); }, onMessage: null };
+}
+
+describe('_answerSnapshotRequest superseded guard', () => {
+  async function makeViewer(transport) {
+    const cap = await mintRoomCapability('pw');
+    const v = new SignedDocSync(new Y.Doc(), transport, {
+      signed: true, epoch: cap.epoch, isEditor: false, isOwner: false,
+      editorSignKey: null,
+      editorVerifyKey: await importPublicKey(cap.pkE), editorPubB64: cap.pkE,
+      ownerVerifyKey: await importPublicKey(cap.pkO), ownerSignKey: null,
+      ownerPubB64: cap.pkO, cert: cap.cert,
+    });
+    v._latestSnapshot = { payload: new Uint8Array([1, 2, 3]) };
+    return v;
+  }
+
+  it('relays the cached snapshot when not superseded', async () => {
+    const t = spyTransport();
+    const v = await makeViewer(t);
+    await v._answerSnapshotRequest();
+    expect(t.sent.length).toBe(1);
+  });
+
+  it('does NOT relay after the room has rotated (superseded)', async () => {
+    const t = spyTransport();
+    const v = await makeViewer(t);
+    v._superseded = true;
+    await v._answerSnapshotRequest();
+    expect(t.sent.length).toBe(0);
+  });
+});
