@@ -29,3 +29,16 @@ describe('sanitizeShape', () => {
     expect(clean).toMatchObject({ tool: 'rect', color: '#ff0000', strokeWidth: 5, fontSize: 16 });
   });
 });
+
+describe('sanitizeShape — Phase 1 fields', () => {
+  it('preserves arrowHeads and strokeStyle and the new tool', () => {
+    const clean = sanitizeShape({
+      tool: 'arrow', color: '#00ff00', strokeWidth: 3,
+      startX: 0, startY: 0, x: 5, y: 5,
+      arrowHeads: 'both', strokeStyle: 'dashed',
+    });
+    expect(clean.tool).toBe('arrow');
+    expect(clean.arrowHeads).toBe('both');
+    expect(clean.strokeStyle).toBe('dashed');
+  });
+});
