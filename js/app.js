@@ -661,6 +661,13 @@ function updateOptionsVisibility(toolName) {
     strokeOption.style.display = hasStroke ? 'flex' : 'none';
   }
 
+  // Stroke STYLE (solid/dashed/dotted) is meaningless for the highlighter, which
+  // is always solid — hide the segmented control for it (width slider stays).
+  const styleGroup = document.querySelector('.stroke-style-group');
+  if (styleGroup) {
+    styleGroup.style.display = (hasStroke && toolName !== 'highlight') ? 'flex' : 'none';
+  }
+
   // Show/hide the divider between stroke and fill options
   const optionDivider = document.querySelector('.option-divider');
   if (optionDivider) {

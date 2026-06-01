@@ -2436,7 +2436,9 @@ function drawShape(item) {
 
   // Legacy tools delegate to drawers that don't self-manage dashing; apply it here.
   // (arrow/diamond/triangle/ellipse set their own dash inside their drawers.)
-  const legacyDash = tool === 'line' || tool === 'rect' || tool === 'circle' || tool === 'freehand';
+  // 'highlight' is included so its (always-solid) dash state is explicitly reset,
+  // guaranteeing a highlight can never inherit a dash from a prior shape's draw.
+  const legacyDash = tool === 'line' || tool === 'rect' || tool === 'circle' || tool === 'freehand' || tool === 'highlight';
   if (legacyDash) ctx.setLineDash(dashPattern(item.strokeStyle).map(d => d / viewport.zoom));
 
   if (tool === 'line') {
@@ -2529,11 +2531,10 @@ function drawShapePreview(shape, dx, dy) {
   } else if (shape.tool === 'text') {
     drawText(shape.x + dx, shape.y + dy, shape.text, shape.color, shape.fontSize, shape.fontFamily);
   } else if (shape.tool === 'highlight') {
+    // The function's outer save/restore (below) scopes this globalAlpha override.
     const movedPoints = shape.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
-    ctx.save();
     ctx.globalAlpha = 0.35;
     drawFreehand(movedPoints, shape.color, shape.strokeWidth || 2);
-    ctx.restore();
   } else if (shape.tool === 'freehand' || shape.tool === 'eraser') {
     const movedPoints = shape.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
     drawFreehand(movedPoints, shape.color, shape.strokeWidth || 2);

@@ -26,4 +26,8 @@ describe('getShapeBounds — Phase 1 shapes', () => {
     const b = getShapeBounds({ tool: 'diamond', startX: 10, startY: 6, width: -10, height: -6 });
     expect(b).toMatchObject({ x: 0, y: 0, width: 10, height: 6 });
   });
+  it('highlight bounds = bbox of its points (freehand fallthrough)', () => {
+    const b = getShapeBounds({ tool: 'highlight', points: [{ x: 2, y: 5 }, { x: 12, y: 1 }, { x: 7, y: 9 }] });
+    expect(b).toMatchObject({ x: 2, y: 1, width: 10, height: 8 });
+  });
 });
