@@ -1226,13 +1226,16 @@ function showShapeSettingsPopup(shape, bounds) {
   const fillColor = shape.fillColor || '#ffffff';
   const fontSize = shape.fontSize;
 
-  // Stroke color (for all except text uses fill)
-  html += `
-    <div class="popup-row">
-      <label>${isText ? 'Color' : 'Stroke Color'}</label>
-      <input type="color" id="shape-color" value="${strokeColor}">
-    </div>
-  `;
+  // Stroke/text color. Sticky notes have no stroke (drawSticky ignores `color`) —
+  // their color is the note fill, edited via the Fill control below, so skip this row.
+  if (shape.tool !== 'sticky') {
+    html += `
+      <div class="popup-row">
+        <label>${isText ? 'Color' : 'Stroke Color'}</label>
+        <input type="color" id="shape-color" value="${strokeColor}">
+      </div>
+    `;
+  }
 
   // Stroke width (for shapes with strokes)
   if (hasStroke && !isText) {
@@ -1761,8 +1764,11 @@ function updateTextInputPosition() {
 function finishTextEditing() {
   if (!editingTextId || !textInput) return;
 
+  const editingShape = findShapeById(editingTextId);
   const newText = textInput.value;
-  if (newText && newText.trim()) {
+  // A blank text shape would be invisible noise, so we keep the old text for the
+  // text tool; but a sticky stays visible when emptied, so allow clearing it.
+  if (editingShape?.tool === 'sticky' || (newText && newText.trim())) {
     updateShapeProperty(editingTextId, 'text', newText);
   }
 
