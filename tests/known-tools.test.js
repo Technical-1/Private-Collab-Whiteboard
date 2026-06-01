@@ -26,3 +26,9 @@ describe('safeToolName — Phase 3', () => {
     expect(safeToolName('sticky')).toBe('sticky');
   });
 });
+
+describe('safeToolName — Phase 4', () => {
+  it('passes through "connector"', () => {
+    expect(safeToolName('connector')).toBe('connector');
+  });
+});
