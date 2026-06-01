@@ -37,6 +37,7 @@ A real-time collaborative whiteboard application with peer-to-peer synchronizati
 - **Capability-based access** - share links carry an owner / editor / viewer role enforced by ECDSA P-256 signatures, not just a client-side flag
 - **Cryptographic view-only** - viewers hold no signing key, so their edits are rejected by every peer — a hostile viewer can't forge their way to edit access
 - **Owner-controlled rotation** - only the room owner can rotate the room to a new epoch, instantly cutting off anyone holding an old link
+- **Hardened against XSS** - untrusted shape/presence data from peers is allow-listed before it ever touches the DOM, backed by a strict `script-src 'self'` CSP (no inline scripts)
 - **No account required** - just create a room and share the link
 - **P2P architecture** - data syncs directly between browsers through a dumb relay
 
@@ -148,6 +149,8 @@ npm run deploy:party
 │   └── styles.css         # All styles
 ├── js/
 │   ├── app.js             # Main entry point, role-aware UI wiring
+│   ├── index-home.js      # Landing-page script (extracted for strict CSP)
+│   ├── boards-home.js     # Board-history page script (extracted for strict CSP)
 │   ├── yjs-setup.js       # Y.Doc init, transport + signed sync, rotation
 │   ├── sync-provider.js   # PartyKit WebSocket transport (AES + awareness)
 │   ├── signed-doc-sync.js # Signed-update doc sync; view-only enforcement
@@ -155,14 +158,16 @@ npm run deploy:party
 │   ├── crypto.js          # AES-256-GCM + ECDSA P-256 helpers
 │   ├── room-cert.js       # Owner-signed epoch certificates
 │   ├── room-manager.js    # Capability links (owner/editor/viewer), rotation
+│   ├── snapshot-store.js  # Per-epoch snapshot cache (localStorage, pruned)
 │   ├── awareness.js       # User presence & cursors
 │   ├── drawing.js         # Canvas rendering & interactions
+│   ├── shape-schema.js    # Sanitize untrusted shapes before DOM interpolation
 │   ├── boards.js          # Multi-board management
 │   ├── board-history.js   # Board visit history (localStorage)
 │   ├── undo-redo.js       # Undo/redo with Y.UndoManager
 │   ├── modal.js           # Modal dialog system
 │   ├── config.js          # App configuration
-│   └── utils.js           # Helper functions
+│   └── utils.js           # Helpers + HTML/color/number/tool sanitizers
 ├── party/
 │   └── index.ts           # PartyKit broadcast relay (~35 lines)
 ├── tests/                 # Vitest suite (crypto, protocol, sync, links)
