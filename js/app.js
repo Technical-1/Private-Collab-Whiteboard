@@ -644,8 +644,8 @@ function updateOptionsVisibility(toolName) {
     el.style.display = isTextTool ? 'flex' : 'none';
   });
 
-  // Show/hide fill option (only for rect and circle)
-  const hasFill = toolName === 'rect' || toolName === 'circle';
+  // Show/hide fill option (for the fillable shape tools)
+  const hasFill = ['rect', 'circle', 'diamond', 'triangle', 'ellipse'].includes(toolName);
   const fillOption = document.querySelector('.fill-option');
   if (fillOption) {
     fillOption.style.display = hasFill ? 'flex' : 'none';
