@@ -1119,36 +1119,31 @@ export function pasteShapes(offsetX = 20, offsetY = 20) {
   });
 
   let pasted = 0;
-  prepared.forEach(newShape => {
-    // Offset position
-    if (newShape.x !== undefined) newShape.x += offsetX;
-    if (newShape.y !== undefined) newShape.y += offsetY;
-    if (newShape.startX !== undefined) newShape.startX += offsetX;
-    if (newShape.startY !== undefined) newShape.startY += offsetY;
-    if (newShape.endX !== undefined) newShape.endX += offsetX;
-    if (newShape.endY !== undefined) newShape.endY += offsetY;
-    if (newShape.points) {
-      newShape.points = newShape.points.map(p => ({
-        x: p.x + offsetX,
-        y: p.y + offsetY
-      }));
-    }
-
-    // Connectors bind by id. Re-point to the pasted endpoint copies; if an endpoint
-    // wasn't part of the copied set, drop the connector rather than create a
-    // confusing duplicate bound to (and overlapping) the originals.
-    if (newShape.tool === 'connector') {
-      const from = idMap.get(newShape.fromId);
-      const to = idMap.get(newShape.toId);
-      if (!from || !to) return;
-      newShape.fromId = from;
-      newShape.toId = to;
-    }
-
-    board.push([newShape]);
-    selectedIds.add(newShape.id);
-    pasted++;
-  });
+  const doPaste = () => {
+    prepared.forEach(newShape => {
+      if (newShape.x !== undefined) newShape.x += offsetX;
+      if (newShape.y !== undefined) newShape.y += offsetY;
+      if (newShape.startX !== undefined) newShape.startX += offsetX;
+      if (newShape.startY !== undefined) newShape.startY += offsetY;
+      if (newShape.endX !== undefined) newShape.endX += offsetX;
+      if (newShape.endY !== undefined) newShape.endY += offsetY;
+      if (newShape.points) {
+        newShape.points = newShape.points.map(p => ({ x: p.x + offsetX, y: p.y + offsetY }));
+      }
+      if (newShape.tool === 'connector') {
+        const from = idMap.get(newShape.fromId);
+        const to = idMap.get(newShape.toId);
+        if (!from || !to) return;
+        newShape.fromId = from;
+        newShape.toId = to;
+      }
+      board.push([newShape]);
+      selectedIds.add(newShape.id);
+      pasted++;
+    });
+  };
+  if (board.doc) board.doc.transact(doPaste);
+  else doPaste();
 
   redrawCanvas();
   return pasted;

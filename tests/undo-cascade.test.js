@@ -76,3 +76,26 @@ describe('multi-select delete is one undo step', () => {
     expect(board.toArray().map(s => s.id).sort()).toEqual(['a', 'b', 'c', 'd', 'e']);
   });
 });
+
+// Mirror pasteShapes pushing all prepared shapes in ONE transaction.
+function pasteManyInOneStep(doc, board, shapes) {
+  doc.transact(() => {
+    for (const s of shapes) board.push([s]);
+  });
+}
+
+describe('multi-shape paste is one undo step', () => {
+  it('pasting three shapes is reversed by a single undo', () => {
+    const { doc, board, um } = setup();
+    const before = board.toArray().map(s => s.id).sort();
+    pasteManyInOneStep(doc, board, [
+      { id: 'p1', tool: 'rect', startX: 0, startY: 0, width: 5, height: 5 },
+      { id: 'p2', tool: 'rect', startX: 6, startY: 0, width: 5, height: 5 },
+      { id: 'p3', tool: 'rect', startX: 12, startY: 0, width: 5, height: 5 },
+    ]);
+    expect(board.length).toBe(before.length + 3);
+
+    um.undo();
+    expect(board.toArray().map(s => s.id).sort()).toEqual(before);
+  });
+});
