@@ -119,6 +119,13 @@ describe('SyncProvider presence probe', () => {
   beforeEach(() => { prevWS = globalThis.WebSocket; globalThis.WebSocket = CapturingWS; });
   afterEach(() => { globalThis.WebSocket = prevWS; });
 
+  function probeFrame(enc) {
+    const body = new TextEncoder().encode(JSON.stringify({ enc }));
+    const f = new Uint8Array(1 + body.length);
+    f[0] = MSG.PRESENCE_PROBE; f.set(body, 1);
+    return f.buffer;
+  }
+
   it('broadcasts an enc:true probe on open for a capability room', async () => {
     const provider = new SyncProvider('localhost:9999', 'room', new Y.Doc(), {
       encryptionKey: {}, encrypt: fakeEncrypt, decrypt: fakeDecrypt,
@@ -130,13 +137,6 @@ describe('SyncProvider presence probe', () => {
     const json = JSON.parse(new TextDecoder().decode(probe.slice(1)));
     expect(json.enc).toBe(true);
   });
-
-  function probeFrame(enc) {
-    const body = new TextEncoder().encode(JSON.stringify({ enc }));
-    const f = new Uint8Array(1 + body.length);
-    f[0] = MSG.PRESENCE_PROBE; f.set(body, 1);
-    return f.buffer;
-  }
 
   it('fires room-access-mismatch once when a keyless client sees an enc:true probe', async () => {
     const provider = new SyncProvider('localhost:9999', 'room', new Y.Doc(), {}); // keyless
@@ -172,6 +172,18 @@ describe('SyncProvider presence probe', () => {
     const echoed = CapturingWS.last.sent.find(f => f[0] === MSG.PRESENCE_PROBE);
     provider.destroy();
     expect(echoed).toBeDefined();
+  });
+
+  it('echoes its probe at most once per connection (no amplification)', async () => {
+    const provider = new SyncProvider('localhost:9999', 'room', new Y.Doc(), {
+      encryptionKey: {}, encrypt: fakeEncrypt, decrypt: fakeDecrypt,
+    });
+    CapturingWS.last.sent.length = 0;
+    await provider._onMessage({ data: probeFrame(false) });
+    await provider._onMessage({ data: probeFrame(false) }); // second enc:false must NOT echo again
+    const echoes = CapturingWS.last.sent.filter((f) => f[0] === MSG.PRESENCE_PROBE);
+    expect(echoes.length).toBe(1);
+    provider.destroy();
   });
 });
 

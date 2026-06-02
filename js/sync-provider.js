@@ -49,6 +49,7 @@ export class SyncProvider {
     this.maxBackoffTime = 2500;
     this._destroyed = false; // once destroyed, never reconnect
     this._mismatchSignaled = false; // fire room-access-mismatch at most once
+    this._echoed = false; // one-shot guard so we echo our presence probe at most once per connection
 
     // Callbacks. onMessage/onConnect are PUBLIC settable properties: the signing
     // layer (SignedDocSync) assigns them after construction, so they must not be
@@ -146,10 +147,10 @@ export class SyncProvider {
     this._onStatus({ status: 'connected' });
 
     // Send our current awareness state
-    this._broadcastAwareness([this.doc.clientID]);
+    await this._broadcastAwareness([this.doc.clientID]);
 
     // Announce our encryption status so cross-mode peers can detect a mismatch.
-    this._broadcastPresenceProbe();
+    await this._broadcastPresenceProbe();
 
     // Let the signing layer (re)bootstrap now that the socket is OPEN.
     if (this.onConnect) this.onConnect();
@@ -216,6 +217,7 @@ export class SyncProvider {
   _onClose() {
     this.wsconnected = false;
     this.wsconnecting = false;
+    this._echoed = false; // reset so a fresh connection can echo again
 
     if (this._destroyed) return; // destroyed: don't report status or reconnect
 
@@ -262,7 +264,9 @@ export class SyncProvider {
         window.dispatchEvent(new CustomEvent('room-access-mismatch'));
       }
     } else if (!parsed.enc && this.isEncrypted) {
-      this._broadcastPresenceProbe();
+      if (this._echoed) return;
+      this._echoed = true;
+      this._broadcastPresenceProbe().catch((e) => console.error('presence probe echo failed:', e));
     }
   }
 
