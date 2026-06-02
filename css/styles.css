@@ -3088,6 +3088,7 @@ body:not(.read-only-mode) .read-only-banner {
 .browser-unsupported__msg { color: #71717a; white-space: pre-line; }
 
 .sticky-edit-input {
+  position: absolute;
   border: none;
   outline: none;
   resize: none;

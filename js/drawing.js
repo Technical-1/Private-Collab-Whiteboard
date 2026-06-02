@@ -1813,8 +1813,9 @@ function startTextEditing(shape) {
     } else if (e.key === 'Escape') {
       clearEditingTextBroadcast();
       editingTextId = null;
-      textInput.remove();
+      const el = textInput;
       textInput = null;
+      el.remove();
       redrawCanvas();
     }
     // sticky: Enter falls through to the textarea default (newline).
@@ -2963,7 +2964,7 @@ function drawSticky(x, y, width, height, fillColor, text, fontSize) {
     ctx.font = `${fs}px Inter, sans-serif`;
     ctx.textBaseline = 'top';
     // Cap length before wrapping: a peer could inject an enormous single "word",
-    // and wrapText's per-char hard-break does an O(n) measureText scan per line.
+    // and wrapMultiline → wrapText's per-char hard-break does an O(n) measureText scan per line.
     // No real note exceeds this, and only what fits the note height renders anyway.
     const capped = text.length > 4000 ? text.slice(0, 4000) : text;
     const lines = wrapMultiline((s) => ctx.measureText(s).width, capped, width - pad * 2);
