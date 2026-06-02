@@ -1,6 +1,6 @@
 import * as Y from 'yjs';
 import { generateId, safeColor, safeNumber, safeToolName } from './utils.js';
-import { sanitizeShape } from './shape-schema.js';
+import { sanitizeShape, clampPoints, safeStrokeWidth } from './shape-schema.js';
 import { arrowHeadPoints, polygonPoints, pointInPolygon, dashPattern, textBounds, isDegenerateShape, buildShapeIndex } from './draw-geometry.js';
 import { wrapText } from './text-wrap.js';
 import {
@@ -2165,10 +2165,11 @@ function hitTestShape(x, y, shape, threshold = 8) {
     case 'highlight':
     case 'freehand':
     case 'eraser': {
-      if (!shape.points || shape.points.length < 2) return false;
-      for (let i = 1; i < shape.points.length; i++) {
-        const p1 = shape.points[i - 1];
-        const p2 = shape.points[i];
+      const pts = clampPoints(shape.points);
+      if (pts.length < 2) return false;
+      for (let i = 1; i < pts.length; i++) {
+        const p1 = pts[i - 1];
+        const p2 = pts[i];
         if (pointToLineDistance(x, y, p1.x, p1.y, p2.x, p2.y) < sw) {
           return true;
         }
@@ -2620,7 +2621,7 @@ function drawLocalTextPreview() {
 function drawShape(item) {
   const tool = item.tool;
   const color = item.color;
-  const sw = item.strokeWidth || 2;
+  const sw = safeStrokeWidth(item.strokeWidth);
 
   ctx.lineWidth = sw;
 
@@ -2952,7 +2953,8 @@ function drawText(x, y, text, color, size = 20, family = 'Arial') {
 }
 
 function drawFreehand(points, color, sw) {
-  if (!points || points.length < 2) return;
+  points = clampPoints(points);
+  if (points.length < 2) return;
 
   ctx.strokeStyle = color;
   ctx.lineWidth = sw;
