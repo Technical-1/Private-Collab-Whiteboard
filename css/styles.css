@@ -1054,6 +1054,11 @@ body {
   border-color: var(--primary);
 }
 
+.options-panel select option {
+  background: #1e1e2e;          /* dark menu background */
+  color: var(--text-primary);  /* light, legible text */
+}
+
 /* Toggle Switch */
 .toggle-switch {
   position: relative;
