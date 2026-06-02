@@ -11,13 +11,17 @@ let onAwarenessChange = null; // Callback for when awareness changes
 // Throttle cursor updates to reduce network traffic
 let lastCursorUpdate = 0;
 
-export function initializeAwareness(awareness, userName, awarenessChangeCallback = null, encrypted = false) {
+export function initializeAwareness(awareness, userName, awarenessChangeCallback = null) {
   localAwareness = awareness;
   onAwarenessChange = awarenessChangeCallback;
   const userId = generateUserId();
   localUserId = visibleId(userId);
   const color = assignColor(userId);
 
+  // No `enc` flag here: access-mismatch detection rides the plaintext
+  // PRESENCE_PROBE in sync-provider, and awareness is AES-encrypted in capability
+  // rooms — so an `enc` field inside it would be unreadable by a keyless visitor
+  // anyway. Keeping it would be dead data.
   awareness.setLocalState({
     user: {
       id: localUserId,
@@ -27,9 +31,6 @@ export function initializeAwareness(awareness, userName, awarenessChangeCallback
       cursor: null, // Will be updated on mouse move
       currentDrawing: null, // In-progress drawing for live preview
       laser: null, // Ephemeral laser-pointer trail (awareness-only, never persisted)
-      // `enc` is retained for wire/back-compat but is no longer read for access
-      // detection — that now rides the plaintext PRESENCE_PROBE in sync-provider.
-      enc: encrypted
     }
   });
 

@@ -10,7 +10,7 @@ describe('getShareableLink (v3)', () => {
   it('embeds a VIEW capability for an encrypted room (no private keys leaked)', async () => {
     const cap = await mintRoomCapability('pw');
     stubWindow('#' + encodeCapabilityHash(cap, 'owner'));
-    const link = getShareableLink(false, 'view');
+    const link = getShareableLink('view');
     expect(link).toContain('#');
     const dec = decodeCapabilityToken(link.split('#')[1]);
     expect(dec.role).toBe('view');
@@ -21,7 +21,7 @@ describe('getShareableLink (v3)', () => {
   it('shares an EDIT (never owner) link for permission=edit', async () => {
     const cap = await mintRoomCapability('pw');
     stubWindow('#' + encodeCapabilityHash(cap, 'owner'));
-    const dec = decodeCapabilityToken(getShareableLink(false, 'edit').split('#')[1]);
+    const dec = decodeCapabilityToken(getShareableLink('edit').split('#')[1]);
     expect(dec.role).toBe('edit');
     expect(dec.skO).toBeNull();   // owner authority NEVER shared
     expect(dec.skE).toBeTruthy();
@@ -29,6 +29,6 @@ describe('getShareableLink (v3)', () => {
 
   it('returns a bare URL for an open room', async () => {
     stubWindow('');
-    expect(getShareableLink(false, 'view')).toBe('https://wb.example/room/abc');
+    expect(getShareableLink('view')).toBe('https://wb.example/room/abc');
   });
 });

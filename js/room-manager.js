@@ -173,13 +173,13 @@ export function isReadOnly() {
 
 /**
  * Shareable link. NEVER shares the owner link; the quick copy gives 'edit', the
- * invite modal gives 'edit'|'view'. (includePassword arg ignored — capability rooms
- * always embed the capability or there's no usable link.)
+ * invite modal gives 'edit'|'view'. Capability rooms always embed the capability
+ * (password + keys) in the link, or there is no usable link — so there is no
+ * "include password" choice to make.
  *
- * @param {boolean} _includePassword - deprecated/ignored (capability is always embedded)
  * @param {'edit'|'view'} permission - permission level for the minted link
  */
-export function getShareableLink(_includePassword = false, permission = 'edit') {
+export function getShareableLink(permission = 'edit') {
   const baseUrl = window.location.origin + window.location.pathname;
   const cap = getCapabilityFromUrl();
   if (!cap) return baseUrl;
