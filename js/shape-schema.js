@@ -19,8 +19,9 @@ export function sanitizeShape(shape) {
 
 // Upper bound on rendered/hit-tested points from an untrusted peer. A real
 // freehand stroke is well under this; the cap bounds per-frame draw cost and the
-// per-char O(n) measureText scans that a giant array would trigger. Mirrors the
-// laser-trail cap (300) which already silently slices.
+// per-char O(n) measureText scans that a giant array would trigger. Intentionally
+// higher than the laser-trail cap (300): freehand strokes are legitimately longer;
+// 5000 bounds the worst case while still accommodating real drawing sessions.
 export const MAX_SHAPE_POINTS = 5000;
 
 // Slice only when over the cap (no copy in the common case, so it is cheap to

@@ -2124,7 +2124,7 @@ function findShapeIndex(id) {
 }
 
 function hitTestShape(x, y, shape, threshold = 8) {
-  const sw = (shape.strokeWidth || 2) / 2 + threshold;
+  const sw = safeStrokeWidth(shape.strokeWidth) / 2 + threshold;
 
   switch (shape.tool) {
     case 'line':
@@ -2292,7 +2292,7 @@ export function getShapeBounds(shape) {
         return { x: 0, y: 0, width: 0, height: 0 };
       }
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      shape.points.forEach(p => {
+      clampPoints(shape.points).forEach(p => {
         minX = Math.min(minX, p.x);
         minY = Math.min(minY, p.y);
         maxX = Math.max(maxX, p.x);
@@ -2488,14 +2488,14 @@ function drawRemoteDrawings() {
   remoteDrawings.forEach(drawing => {
     ctx.save();
     ctx.globalAlpha = 0.6; // Semi-transparent to show it's in-progress
-    ctx.lineWidth = drawing.strokeWidth || 2;
+    ctx.lineWidth = safeStrokeWidth(drawing.strokeWidth);
 
     if (drawing.tool === 'highlight') {
       ctx.globalAlpha = 0.35;
-      drawFreehand(drawing.points, drawing.color, drawing.strokeWidth || 2);
+      drawFreehand(drawing.points, drawing.color, safeStrokeWidth(drawing.strokeWidth));
     } else if (drawing.tool === 'freehand' || drawing.tool === 'eraser') {
       const color = drawing.tool === 'eraser' ? '#FFFFFF' : drawing.color;
-      drawFreehand(drawing.points, color, drawing.strokeWidth || 2);
+      drawFreehand(drawing.points, color, safeStrokeWidth(drawing.strokeWidth));
     } else if (drawing.tool === 'line') {
       ctx.setLineDash(dashPattern(drawing.strokeStyle).map(d => d / viewport.zoom));
       drawLine(drawing.startX, drawing.startY, drawing.x, drawing.y, drawing.color);
@@ -2509,15 +2509,15 @@ function drawRemoteDrawings() {
       drawCircle(drawing.startX, drawing.startY, drawing.radius, drawing.color, drawing.fillColor);
       ctx.setLineDash([]);
     } else if (drawing.tool === 'arrow') {
-      drawArrow(drawing.startX, drawing.startY, drawing.x, drawing.y, drawing.color, drawing.strokeWidth || 2, drawing.strokeStyle, drawing.arrowHeads);
+      drawArrow(drawing.startX, drawing.startY, drawing.x, drawing.y, drawing.color, safeStrokeWidth(drawing.strokeWidth), drawing.strokeStyle, drawing.arrowHeads);
     } else if (drawing.tool === 'diamond' || drawing.tool === 'triangle') {
       const bx = Math.min(drawing.startX, drawing.startX + drawing.width);
       const by = Math.min(drawing.startY, drawing.startY + drawing.height);
-      drawPolygon(drawing.tool, bx, by, Math.abs(drawing.width), Math.abs(drawing.height), drawing.color, drawing.strokeWidth || 2, drawing.strokeStyle, drawing.fillColor);
+      drawPolygon(drawing.tool, bx, by, Math.abs(drawing.width), Math.abs(drawing.height), drawing.color, safeStrokeWidth(drawing.strokeWidth), drawing.strokeStyle, drawing.fillColor);
     } else if (drawing.tool === 'ellipse') {
       const bx = Math.min(drawing.startX, drawing.startX + drawing.width);
       const by = Math.min(drawing.startY, drawing.startY + drawing.height);
-      drawEllipseShape(bx, by, Math.abs(drawing.width), Math.abs(drawing.height), drawing.color, drawing.strokeWidth || 2, drawing.strokeStyle, drawing.fillColor);
+      drawEllipseShape(bx, by, Math.abs(drawing.width), Math.abs(drawing.height), drawing.color, safeStrokeWidth(drawing.strokeWidth), drawing.strokeStyle, drawing.fillColor);
     } else if (drawing.tool === 'text' && drawing.text) {
       drawText(drawing.x, drawing.y, drawing.text, drawing.color, drawing.fontSize, drawing.fontFamily);
     }
@@ -2724,7 +2724,7 @@ function drawShapePreview(shape, dx, dy) {
   ctx.scale(viewport.zoom, viewport.zoom);
   ctx.translate(-viewport.x, -viewport.y);
   ctx.globalAlpha = 0.5;
-  ctx.lineWidth = shape.strokeWidth || 2;
+  ctx.lineWidth = safeStrokeWidth(shape.strokeWidth);
 
   if (shape.tool === 'line') {
     drawLine(shape.startX + dx, shape.startY + dy, shape.x + dx, shape.y + dy, shape.color);
@@ -2733,13 +2733,13 @@ function drawShapePreview(shape, dx, dy) {
   } else if (shape.tool === 'circle') {
     drawCircle(shape.startX + dx, shape.startY + dy, shape.radius, shape.color, shape.fillColor);
   } else if (shape.tool === 'arrow') {
-    drawArrow(shape.startX + dx, shape.startY + dy, shape.x + dx, shape.y + dy, shape.color, shape.strokeWidth || 2, shape.strokeStyle, shape.arrowHeads);
+    drawArrow(shape.startX + dx, shape.startY + dy, shape.x + dx, shape.y + dy, shape.color, safeStrokeWidth(shape.strokeWidth), shape.strokeStyle, shape.arrowHeads);
   } else if (shape.tool === 'diamond' || shape.tool === 'triangle') {
     const b = getShapeBounds(shape);
-    drawPolygon(shape.tool, b.x + dx, b.y + dy, b.width, b.height, shape.color, shape.strokeWidth || 2, shape.strokeStyle, shape.fillColor);
+    drawPolygon(shape.tool, b.x + dx, b.y + dy, b.width, b.height, shape.color, safeStrokeWidth(shape.strokeWidth), shape.strokeStyle, shape.fillColor);
   } else if (shape.tool === 'ellipse') {
     const b = getShapeBounds(shape);
-    drawEllipseShape(b.x + dx, b.y + dy, b.width, b.height, shape.color, shape.strokeWidth || 2, shape.strokeStyle, shape.fillColor);
+    drawEllipseShape(b.x + dx, b.y + dy, b.width, b.height, shape.color, safeStrokeWidth(shape.strokeWidth), shape.strokeStyle, shape.fillColor);
   } else if (shape.tool === 'text') {
     drawText(shape.x + dx, shape.y + dy, shape.text, shape.color, shape.fontSize, shape.fontFamily);
   } else if (shape.tool === 'sticky') {
@@ -2749,10 +2749,10 @@ function drawShapePreview(shape, dx, dy) {
     // The function's outer save/restore (below) scopes this globalAlpha override.
     const movedPoints = shape.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
     ctx.globalAlpha = 0.35;
-    drawFreehand(movedPoints, shape.color, shape.strokeWidth || 2);
+    drawFreehand(movedPoints, shape.color, safeStrokeWidth(shape.strokeWidth));
   } else if (shape.tool === 'freehand' || shape.tool === 'eraser') {
     const movedPoints = shape.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
-    drawFreehand(movedPoints, shape.color, shape.strokeWidth || 2);
+    drawFreehand(movedPoints, shape.color, safeStrokeWidth(shape.strokeWidth));
   } else if (shape.tool === 'connector') {
     // A connector has no own coordinates; it's anchored to its endpoints. Draw it
     // at its resolved position. If a dragged endpoint is selected, offset that
@@ -2767,7 +2767,7 @@ function drawShapePreview(shape, dx, dy) {
         if (selectedIds.has(shape.fromId)) { p1.x += dragDX; p1.y += dragDY; }
         if (selectedIds.has(shape.toId)) { p2.x += dragDX; p2.y += dragDY; }
       }
-      drawArrow(p1.x, p1.y, p2.x, p2.y, shape.color, shape.strokeWidth || 2, shape.strokeStyle, shape.arrowHeads);
+      drawArrow(p1.x, p1.y, p2.x, p2.y, shape.color, safeStrokeWidth(shape.strokeWidth), shape.strokeStyle, shape.arrowHeads);
     }
   }
 

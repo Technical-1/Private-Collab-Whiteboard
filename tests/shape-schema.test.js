@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { sanitizeShape } from '../js/shape-schema.js';
+import { sanitizeShape, clampPoints, safeStrokeWidth, MAX_SHAPE_POINTS } from '../js/shape-schema.js';
 
 describe('sanitizeShape', () => {
   it('returns null for non-objects', () => {
@@ -70,8 +70,6 @@ describe('sanitizeShape — connector', () => {
     expect(clean.toAnchor).toBe('w');
   });
 });
-
-import { clampPoints, safeStrokeWidth, MAX_SHAPE_POINTS } from '../js/shape-schema.js';
 
 describe('clampPoints', () => {
   it('returns the array unchanged when under the cap', () => {
