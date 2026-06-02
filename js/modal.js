@@ -46,10 +46,19 @@ export function initModals() {
 }
 
 let currentResolve = null;
+// Optional teardown run on EVERY close path (backdrop / X / Escape / buttons).
+// A modal that registers window-level listeners sets this so they can't leak
+// when the user dismisses via backdrop or Escape rather than an action button.
+let currentCleanup = null;
 
 function closeModal(result = null) {
   const modal = modalContainer.querySelector('.app-modal');
   modal.classList.remove('active');
+
+  if (currentCleanup) {
+    try { currentCleanup(); } catch (e) { console.error('Modal cleanup failed:', e); }
+    currentCleanup = null;
+  }
 
   if (currentResolve) {
     currentResolve(result);
@@ -60,6 +69,8 @@ function closeModal(result = null) {
 
 function showModal(title, description, bodyHTML, actions) {
   initModals();
+  // Each modal starts with no teardown registered; the opener sets one if needed.
+  currentCleanup = null;
 
   const modal = modalContainer.querySelector('.app-modal');
   const titleEl = modalContainer.querySelector('#modal-title');
@@ -241,6 +252,9 @@ export function showInviteModal(currentLink, isEncrypted) {
       linkInput.value = e.detail.link;
     };
     window.addEventListener('invite-link-updated', linkUpdateHandler);
+    // Remove the window listener on ANY close path (backdrop, X, Escape, or
+    // either button) — closeModal runs this teardown.
+    currentCleanup = () => window.removeEventListener('invite-link-updated', linkUpdateHandler);
 
     const copyToClipboard = () => {
       navigator.clipboard.writeText(linkInput.value);
@@ -264,13 +278,11 @@ export function showInviteModal(currentLink, isEncrypted) {
     copyAndCloseBtn.onclick = () => {
       copyToClipboard();
       const permission = modalContainer.querySelector('input[name="permission"]:checked').value;
-      window.removeEventListener('invite-link-updated', linkUpdateHandler);
-      closeModal({ copied: true, permission });
+      closeModal({ copied: true, permission }); // currentCleanup removes the listener
     };
 
     cancelBtn.onclick = () => {
-      window.removeEventListener('invite-link-updated', linkUpdateHandler);
-      closeModal(null);
+      closeModal(null); // currentCleanup removes the listener
     };
   });
 }
