@@ -55,3 +55,16 @@ describe('dashPattern', () => {
     expect(dashPattern('zigzag')).toEqual([]);
   });
 });
+
+import { textBounds } from '../js/draw-geometry.js';
+
+describe('textBounds', () => {
+  it('anchors the box at the text baseline (y is top = y - fontSize)', () => {
+    const b = textBounds({ x: 10, y: 100, fontSize: 20 }, 80);
+    expect(b).toEqual({ x: 10, y: 80, width: 80, height: 20 });
+  });
+  it('defaults fontSize to 20 when missing', () => {
+    const b = textBounds({ x: 0, y: 50 }, 40);
+    expect(b).toEqual({ x: 0, y: 30, width: 40, height: 20 });
+  });
+});

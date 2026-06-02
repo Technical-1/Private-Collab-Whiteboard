@@ -1,7 +1,7 @@
 import * as Y from 'yjs';
 import { generateId, safeColor, safeNumber, safeToolName } from './utils.js';
 import { sanitizeShape } from './shape-schema.js';
-import { arrowHeadPoints, polygonPoints, pointInPolygon, dashPattern } from './draw-geometry.js';
+import { arrowHeadPoints, polygonPoints, pointInPolygon, dashPattern, textBounds } from './draw-geometry.js';
 import { wrapText } from './text-wrap.js';
 import {
   updateCursorPosition,
@@ -2140,10 +2140,12 @@ function hitTestShape(x, y, shape, threshold = 8) {
     }
 
     case 'text': {
-      const textWidth = ctx.measureText(shape.text).width;
-      const fs = shape.fontSize || 20;
-      return x >= shape.x && x <= shape.x + textWidth &&
-             y >= shape.y - fs && y <= shape.y;
+      // Must set ctx.font before measuring — the context retains the font from
+      // the previously drawn shape otherwise (this was the selection bug).
+      ctx.font = `${shape.fontSize || 20}px ${shape.fontFamily || 'Arial'}`;
+      const textWidth = ctx.measureText(shape.text || '').width;
+      const b = textBounds(shape, textWidth);
+      return x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + b.height;
     }
 
     case 'highlight':
@@ -2264,14 +2266,8 @@ export function getShapeBounds(shape) {
 
     case 'text': {
       ctx.font = `${shape.fontSize || 20}px ${shape.fontFamily || 'Arial'}`;
-      const textWidth = ctx.measureText(shape.text).width;
-      const fs = shape.fontSize || 20;
-      return {
-        x: shape.x,
-        y: shape.y - fs,
-        width: textWidth,
-        height: fs
-      };
+      const textWidth = ctx.measureText(shape.text || '').width;
+      return textBounds(shape, textWidth);
     }
 
     case 'highlight':

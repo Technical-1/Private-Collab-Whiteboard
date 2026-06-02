@@ -49,3 +49,13 @@ export function dashPattern(style) {
   if (style === 'dotted') return [2, 6];
   return [];
 }
+
+// Bounding box of a text shape given its already-measured pixel width. Text is
+// drawn on the alphabetic baseline at (x, y), so the box top is y - fontSize.
+// Shared by getShapeBounds and hitTestShape so the two cannot drift (a past bug:
+// hit-testing measured width with a stale ctx.font because only one call site
+// set the font).
+export function textBounds(shape, textWidth) {
+  const fs = shape.fontSize || 20;
+  return { x: shape.x, y: shape.y - fs, width: textWidth, height: fs };
+}
