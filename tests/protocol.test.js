@@ -54,3 +54,11 @@ describe('rotate notice', () => {
     expect(out.sig).toBe('SIGB64');
   });
 });
+
+describe('MSG enum', () => {
+  it('defines a distinct PRESENCE_PROBE type that does not collide', () => {
+    expect(MSG.PRESENCE_PROBE).toBe(5);
+    const values = Object.values(MSG);
+    expect(new Set(values).size).toBe(values.length); // all distinct
+  });
+});
