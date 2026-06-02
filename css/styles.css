@@ -1536,10 +1536,6 @@ canvas {
 /* ============================================
    RESPONSIVE - ROOM PAGE
    ============================================ */
-@media (max-width: 1024px) {
-  /* side-panel removed; canvas is always full-width */
-}
-
 @media (max-width: 768px) {
   .room-page .room-header {
     padding: 0 12px;
