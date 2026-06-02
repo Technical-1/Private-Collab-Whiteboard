@@ -1760,34 +1760,46 @@ function startTextEditing(shape) {
   editingTextId = shape.id;
   broadcastEditingText(shape.id);
 
-  // Convert world coordinates to screen coordinates for input positioning
-  // Sticky notes anchor on their top-left (startX/startY); text shapes use x/y.
-  const anchorX = shape.tool === 'sticky' ? shape.startX : shape.x;
-  const anchorY = shape.tool === 'sticky' ? shape.startY : shape.y;
-  const screenPos = worldToScreen(anchorX, anchorY);
-  const scaledFontSize = (shape.fontSize || 20) * viewport.zoom;
+  const isSticky = shape.tool === 'sticky';
+  const screenBounds = isSticky
+    ? (() => {
+        const b = getShapeBounds(shape);
+        const tl = worldToScreen(b.x, b.y);
+        const br = worldToScreen(b.x + b.width, b.y + b.height);
+        return { left: tl.x, top: tl.y, width: br.x - tl.x, height: br.y - tl.y };
+      })()
+    : null;
 
-  // Clamp position to keep input within container bounds
-  const containerRect = container.getBoundingClientRect();
-  const inputWidth = 200; // Approximate width for clamping
-  const inputHeight = scaledFontSize + 20; // Approximate height
-  const margin = 10;
-
-  const clampedX = Math.min(screenPos.x, containerRect.width - inputWidth - margin);
-  const clampedY = Math.max(inputHeight + margin, Math.min(screenPos.y, containerRect.height - margin));
-
-  textInput = document.createElement('input');
-  textInput.type = 'text';
-  textInput.value = shape.text;
-  textInput.className = 'text-edit-input';
+  textInput = document.createElement(isSticky ? 'textarea' : 'input');
+  if (!isSticky) textInput.type = 'text';
+  textInput.value = shape.text || '';
+  textInput.className = isSticky ? 'sticky-edit-input' : 'text-edit-input';
   textInput.style.position = 'absolute';
-  textInput.style.left = `${Math.max(margin, clampedX)}px`;
-  textInput.style.top = `${clampedY}px`;
-  textInput.style.fontSize = `${scaledFontSize}px`;
-  textInput.style.fontFamily = shape.fontFamily || 'Arial';
-  textInput.style.maxWidth = `${containerRect.width - margin * 2}px`;
-  // Text sits above its baseline; a sticky's anchor is its top edge, so place the input there.
-  textInput.style.transform = shape.tool === 'sticky' ? 'none' : 'translateY(-100%)';
+  if (isSticky) {
+    textInput.style.left = `${screenBounds.left}px`;
+    textInput.style.top = `${screenBounds.top}px`;
+    textInput.style.width = `${screenBounds.width}px`;
+    textInput.style.height = `${screenBounds.height}px`;
+    textInput.style.fontSize = `${(shape.fontSize || 16) * viewport.zoom}px`;
+    textInput.style.fontFamily = 'Inter, sans-serif';
+    textInput.style.setProperty('--sticky-fill', shape.fillColor || '#fff8b8');
+  } else {
+    // ---- existing <input> positioning block (text tool path unchanged) ----
+    const anchorX = shape.x;
+    const anchorY = shape.y;
+    const screenPos = worldToScreen(anchorX, anchorY);
+    const scaledFontSize = (shape.fontSize || 20) * viewport.zoom;
+    const containerRect = container.getBoundingClientRect();
+    const margin = 10;
+    const clampedX = Math.min(screenPos.x, containerRect.width - 200 - margin);
+    const clampedY = Math.max(scaledFontSize + 20 + margin, Math.min(screenPos.y, containerRect.height - margin));
+    textInput.style.left = `${Math.max(margin, clampedX)}px`;
+    textInput.style.top = `${clampedY}px`;
+    textInput.style.fontSize = `${scaledFontSize}px`;
+    textInput.style.fontFamily = shape.fontFamily || 'Arial';
+    textInput.style.maxWidth = `${containerRect.width - margin * 2}px`;
+    textInput.style.transform = 'translateY(-100%)';
+  }
 
   // Redraw on input to show live preview
   textInput.addEventListener('input', () => {
@@ -1795,7 +1807,8 @@ function startTextEditing(shape) {
   });
 
   textInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
+    if (e.key === 'Enter' && !isSticky) {
+      e.preventDefault();
       finishTextEditing();
     } else if (e.key === 'Escape') {
       clearEditingTextBroadcast();
@@ -1804,6 +1817,7 @@ function startTextEditing(shape) {
       textInput = null;
       redrawCanvas();
     }
+    // sticky: Enter falls through to the textarea default (newline).
   });
 
   container.appendChild(textInput);
@@ -1812,7 +1826,7 @@ function startTextEditing(shape) {
   requestAnimationFrame(() => {
     if (textInput) {
       textInput.focus();
-      textInput.select();
+      if (!isSticky) textInput.select();
 
       // Add blur listener after focus is established
       setTimeout(() => {
@@ -1846,15 +1860,28 @@ function updateTextInputPosition() {
   const shape = findShapeById(editingTextId);
   if (!shape) return;
 
-  const anchorX = shape.tool === 'sticky' ? shape.startX : shape.x;
-  const anchorY = shape.tool === 'sticky' ? shape.startY : shape.y;
+  if (shape.tool === 'sticky') {
+    const b = getShapeBounds(shape);
+    const tl = worldToScreen(b.x, b.y);
+    const br = worldToScreen(b.x + b.width, b.y + b.height);
+    textInput.style.left = `${tl.x}px`;
+    textInput.style.top = `${tl.y}px`;
+    textInput.style.width = `${br.x - tl.x}px`;
+    textInput.style.height = `${br.y - tl.y}px`;
+    textInput.style.fontSize = `${(shape.fontSize || 16) * viewport.zoom}px`;
+    textInput.style.transform = 'none';
+    return;
+  }
+
+  const anchorX = shape.x;
+  const anchorY = shape.y;
   const screenPos = worldToScreen(anchorX, anchorY);
   const scaledFontSize = (shape.fontSize || 20) * viewport.zoom;
 
   textInput.style.left = `${screenPos.x}px`;
   textInput.style.top = `${screenPos.y}px`;
   textInput.style.fontSize = `${scaledFontSize}px`;
-  textInput.style.transform = shape.tool === 'sticky' ? 'none' : 'translateY(-100%)';
+  textInput.style.transform = 'translateY(-100%)';
 }
 
 function finishTextEditing() {
