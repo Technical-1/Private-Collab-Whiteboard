@@ -617,6 +617,7 @@ function handleMouseUp(e) {
 
   // Drop click-without-drag phantoms before they reach the CRDT.
   if (['line', 'arrow', 'rect', 'diamond', 'triangle', 'ellipse', 'circle'].includes(currentTool)) {
+    // radius === hypot(dx,dy); isDegenerateShape only reads it for the circle case.
     const radius = Math.sqrt(Math.pow(x - startX, 2) + Math.pow(y - startY, 2));
     if (isDegenerateShape(currentTool, { dx: x - startX, dy: y - startY, radius })) {
       redrawCanvas(); // clear the in-progress preview

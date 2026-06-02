@@ -50,8 +50,14 @@ export function dashPattern(style) {
   return [];
 }
 
-// Bounding box of a text shape given its already-measured pixel width. Text is
-// drawn on the alphabetic baseline at (x, y), so the box top is y - fontSize.
+/**
+ * Bounding box of a text shape from its already-measured pixel width.
+ * @param {{x:number,y:number,fontSize?:number}} shape
+ * @param {number} textWidth - result of ctx.measureText(shape.text||'').width
+ *   measured with ctx.font ALREADY set to the shape's font (size + family).
+ * @returns {{x:number,y:number,width:number,height:number}}
+ */
+// Text is drawn on the alphabetic baseline at (x, y), so the box top is y - fontSize.
 // Shared by getShapeBounds and hitTestShape so the two cannot drift (a past bug:
 // hit-testing measured width with a stale ctx.font because only one call site
 // set the font).

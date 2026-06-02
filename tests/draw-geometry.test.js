@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { arrowHeadPoints, polygonPoints, pointInPolygon, dashPattern } from '../js/draw-geometry.js';
+import { arrowHeadPoints, polygonPoints, pointInPolygon, dashPattern, textBounds, isDegenerateShape, buildShapeIndex } from '../js/draw-geometry.js';
 
 describe('arrowHeadPoints', () => {
   it('returns two barb points behind the tip for a rightward arrow', () => {
@@ -56,8 +56,6 @@ describe('dashPattern', () => {
   });
 });
 
-import { textBounds } from '../js/draw-geometry.js';
-
 describe('textBounds', () => {
   it('anchors the box at the text baseline (y is top = y - fontSize)', () => {
     const b = textBounds({ x: 10, y: 100, fontSize: 20 }, 80);
@@ -68,8 +66,6 @@ describe('textBounds', () => {
     expect(b).toEqual({ x: 0, y: 30, width: 40, height: 20 });
   });
 });
-
-import { isDegenerateShape } from '../js/draw-geometry.js';
 
 describe('isDegenerateShape', () => {
   it('flags a zero-drag rect/diamond/triangle/ellipse', () => {
@@ -87,9 +83,11 @@ describe('isDegenerateShape', () => {
     expect(isDegenerateShape('circle', { radius: 1 })).toBe(true);
     expect(isDegenerateShape('circle', { radius: 30 })).toBe(false);
   });
+  it('treats NaN dims as degenerate (|| 0 fallback)', () => {
+    expect(isDegenerateShape('circle', { radius: NaN })).toBe(true);
+    expect(isDegenerateShape('rect', { dx: NaN, dy: NaN })).toBe(true);
+  });
 });
-
-import { buildShapeIndex } from '../js/draw-geometry.js';
 
 describe('buildShapeIndex', () => {
   it('maps id -> shape and ignores entries without an id', () => {
@@ -102,5 +100,9 @@ describe('buildShapeIndex', () => {
   it('last write wins on duplicate ids', () => {
     const idx = buildShapeIndex([{ id: 'x', n: 1 }, { id: 'x', n: 2 }]);
     expect(idx.get('x').n).toBe(2);
+  });
+  it('returns references to the original shape objects (not copies)', () => {
+    const items = [{ id: 'x', n: 1 }, { id: 'x', n: 2 }];
+    expect(buildShapeIndex(items).get('x')).toBe(items[1]);
   });
 });
