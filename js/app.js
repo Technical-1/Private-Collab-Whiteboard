@@ -469,12 +469,7 @@ async function main() {
 
   updateStatus(isEncrypted ? 'Encrypted' : 'Connected');
 
-  // Setup toggle panel functionality
-  const togglePanelBtn = document.getElementById('toggle-panel');
-  const sidePanel = document.getElementById('side-panel');
-  const canvasArea = document.getElementById('canvas-area');
-
-  // Resize canvas function - defined early so it can be used by panel toggle
+  // Resize canvas function
   function resizeCanvas() {
     const container = document.getElementById('canvas-container');
     const newWidth = container.clientWidth;
@@ -488,12 +483,32 @@ async function main() {
     }
   }
 
-  if (togglePanelBtn && sidePanel && canvasArea) {
-    togglePanelBtn.onclick = () => {
-      sidePanel.classList.toggle('hidden');
-      canvasArea.classList.toggle('panel-hidden');
-      togglePanelBtn.classList.toggle('active');
+  // ⋯ More popover
+  const moreBtn = document.getElementById('more-btn');
+  const moreMenu = document.getElementById('more-menu');
+  if (moreBtn && moreMenu) {
+    const closeMore = () => {
+      moreMenu.classList.add('u-hidden');
+      moreBtn.setAttribute('aria-expanded', 'false');
+      document.removeEventListener('click', onOutside, true);
+      document.removeEventListener('keydown', onEsc, true);
     };
+    const onOutside = (e) => {
+      if (!moreMenu.contains(e.target) && e.target !== moreBtn && !moreBtn.contains(e.target)) closeMore();
+    };
+    const onEsc = (e) => { if (e.key === 'Escape') closeMore(); };
+    moreBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const open = moreMenu.classList.toggle('u-hidden') === false;
+      moreBtn.setAttribute('aria-expanded', String(open));
+      if (open) {
+        document.addEventListener('click', onOutside, true);
+        document.addEventListener('keydown', onEsc, true);
+      } else {
+        document.removeEventListener('click', onOutside, true);
+        document.removeEventListener('keydown', onEsc, true);
+      }
+    });
   }
 
   // Setup keyboard shortcuts

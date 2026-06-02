@@ -1384,15 +1384,10 @@ body {
   position: fixed;
   top: 56px;
   left: 0;
-  right: 280px;
+  right: 0;
   bottom: 0;
   z-index: 1;
-  transition: right 0.3s ease;
   overflow: hidden;
-}
-
-#canvas-area.panel-hidden {
-  right: 0;
 }
 
 #canvas-container {
@@ -1626,31 +1621,12 @@ canvas {
    RESPONSIVE - ROOM PAGE
    ============================================ */
 @media (max-width: 1024px) {
-  .room-page .side-panel {
-    width: 260px;
-  }
-
-  #canvas-area {
-    right: 260px;
-  }
-
-  #canvas-area.panel-hidden {
-    right: 0;
-  }
+  /* side-panel removed; canvas is always full-width */
 }
 
 @media (max-width: 768px) {
   .room-page .room-header {
     padding: 0 12px;
-  }
-
-  .room-page .side-panel {
-    width: 100%;
-    max-width: 320px;
-  }
-
-  #canvas-area {
-    right: 0;
   }
 
   #canvas-container {
@@ -2719,44 +2695,8 @@ body:not(.read-only-mode) .read-only-banner {
   }
 }
 
-/* Hide side panel by default on mobile */
+/* Compact zoom controls for mobile */
 @media (max-width: 768px) {
-  #side-panel {
-    position: fixed;
-    top: 56px;
-    right: -280px;
-    width: 280px;
-    height: calc(100vh - 56px);
-    z-index: 500;
-    transition: right 0.3s ease;
-    box-shadow: -4px 0 20px rgba(0, 0, 0, 0.2);
-  }
-
-  #side-panel:not(.hidden) {
-    right: 0;
-  }
-
-  #side-panel.hidden {
-    right: -280px;
-  }
-
-  #canvas-area {
-    right: 0 !important;
-  }
-
-  /* Backdrop when panel is open */
-  #side-panel:not(.hidden)::before {
-    content: '';
-    position: fixed;
-    left: 0;
-    top: 0;
-    right: 280px;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.3);
-    z-index: -1;
-  }
-
-  /* Compact zoom controls for mobile */
   .zoom-panel {
     padding: 6px;
     gap: 4px;
@@ -2772,26 +2712,6 @@ body:not(.read-only-mode) .read-only-banner {
   .zoom-level-btn {
     padding: 6px 10px;
     font-size: 0.75rem;
-  }
-}
-
-/* Fullscreen-like experience on small screens */
-@media (max-width: 480px) {
-  #side-panel {
-    width: 100%;
-    right: -100%;
-  }
-
-  #side-panel:not(.hidden) {
-    right: 0;
-  }
-
-  #side-panel.hidden {
-    right: -100%;
-  }
-
-  #side-panel:not(.hidden)::before {
-    display: none;
   }
 }
 
@@ -3137,3 +3057,39 @@ body:not(.read-only-mode) .read-only-banner {
 }
 .presence-cluster .avatar-self { box-shadow: 0 0 0 2px #fff inset; }
 .presence-cluster .avatar-more { background: #44445a; font-size: 11px; }
+
+/* ============================================
+   MORE BUTTON + POPOVER
+   ============================================ */
+.more-btn {
+  position: absolute;
+  top: 12px;
+  right: 200px;                  /* sits left of the presence cluster */
+  width: 36px; height: 36px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 8px;
+  background: var(--bg-elevated, #1e1e2e);
+  color: var(--text-primary, #e8e8f0);
+  border: 1px solid var(--border, #2e2e3e);
+  cursor: pointer;
+  z-index: 21;
+}
+.more-menu {
+  position: absolute;
+  top: 56px; right: 12px;
+  width: 260px;
+  background: var(--bg-elevated, #1e1e2e);
+  border: 1px solid var(--border, #2e2e3e);
+  border-radius: 10px;
+  padding: 8px;
+  display: flex; flex-direction: column; gap: 4px;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.4);
+  z-index: 40;
+}
+.more-menu .more-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; color: var(--text-primary); }
+.more-menu .more-item { text-align: left; padding: 8px; border-radius: 6px; background: transparent; color: var(--text-primary); border: none; cursor: pointer; font-size: 0.85rem; }
+.more-menu .more-item:hover { background: rgba(255,255,255,0.06); }
+.more-menu .more-item.primary-action { background: var(--primary, #6366f1); color: #fff; }
+.more-menu .more-divider { height: 1px; background: var(--border, #2e2e3e); margin: 4px 0; }
+.more-menu .share-row { gap: 6px; }
+.more-menu .share-row input { flex: 1; min-width: 0; }
