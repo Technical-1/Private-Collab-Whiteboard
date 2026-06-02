@@ -28,6 +28,7 @@ import {
   showKeyboardShortcuts,
   showExtractTextModal
 } from './modal.js';
+import { shouldDeleteSelection } from './keyboard-intent.js';
 import {
   initUndoManager,
   undo,
@@ -836,10 +837,12 @@ function setupKeyboardShortcuts() {
       showKeyboardShortcuts();
     }
 
-    // Delete: Delete or Backspace key deletes selected shapes
+    // Delete: only consume the key when a deletion will actually occur, so an
+    // empty/ read-only Backspace is not swallowed.
     if (e.key === 'Delete' || e.key === 'Backspace') {
-      e.preventDefault();
-      if (!readOnly) {
+      const selectionCount = drawingController.getSelectedIds().size;
+      if (shouldDeleteSelection({ readOnly, selectionCount })) {
+        e.preventDefault();
         deleteSelectedShapes();
         drawingController.redraw();
       }
