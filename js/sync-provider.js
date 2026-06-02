@@ -158,26 +158,31 @@ export class SyncProvider {
       const type = data[0];
       let payload = data.slice(1);
 
-      if (type === MSG.AWARENESS) {
-        // Awareness is never encrypted/signed (ephemeral, cosmetic).
-        this._handleAwarenessMessage(payload);
+      // The presence probe is always plaintext (it is how a keyless visitor
+      // discovers an encrypted room), so handle it before any decryption.
+      if (type === MSG.PRESENCE_PROBE) {
+        this._handlePresenceProbe(payload);
         return;
       }
 
-      // All other types carry an AES-encrypted signed envelope.
+      // Everything else (including AWARENESS now) is AES-encrypted in capability
+      // rooms. Open rooms have no key, so this is a no-op there.
       if (this.isEncrypted && this.decrypt) {
         try {
           payload = await this.decrypt(payload, this.encryptionKey);
         } catch (err) {
-          // Drop the frame. In the capability model the password lives in the
-          // link, so an undecryptable frame is an incompatible peer (e.g. someone
-          // who opened the bare room URL, or a pre-rotation client) — NOT the
-          // local user's "wrong password". Surfacing it would wrongly nuke a
-          // working session, so we ignore it rather than emit decryption-failed.
+          // Undecryptable frame == incompatible peer (e.g. a keyless visitor's
+          // plaintext awareness, or a pre-rotation client). Drop it silently.
           console.debug('Dropping undecryptable frame from an incompatible peer');
           return;
         }
       }
+
+      if (type === MSG.AWARENESS) {
+        this._handleAwarenessMessage(payload);
+        return;
+      }
+
       if (this.onMessage) this.onMessage(type, payload);
     } catch (error) {
       console.error('Failed to process message:', error);
