@@ -72,3 +72,12 @@ export function isDegenerateShape(tool, dims, minSize = 2) {
   // (a thin tall/wide box is still a legitimate shape).
   return Math.abs(dims.dx || 0) < minSize && Math.abs(dims.dy || 0) < minSize;
 }
+
+// One pass over a board's items to an id->shape Map, so per-shape lookups during
+// a redraw are O(1) instead of O(n) board.toArray() scans (connectors resolve two
+// endpoints each, which otherwise makes a repaint O(shapes * connectors)).
+export function buildShapeIndex(items) {
+  const m = new Map();
+  for (const s of items) if (s && s.id) m.set(s.id, s);
+  return m;
+}

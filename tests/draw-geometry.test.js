@@ -88,3 +88,19 @@ describe('isDegenerateShape', () => {
     expect(isDegenerateShape('circle', { radius: 30 })).toBe(false);
   });
 });
+
+import { buildShapeIndex } from '../js/draw-geometry.js';
+
+describe('buildShapeIndex', () => {
+  it('maps id -> shape and ignores entries without an id', () => {
+    const items = [{ id: 'a', tool: 'rect' }, { tool: 'noid' }, { id: 'b', tool: 'line' }];
+    const idx = buildShapeIndex(items);
+    expect(idx.get('a')).toEqual({ id: 'a', tool: 'rect' });
+    expect(idx.get('b').tool).toBe('line');
+    expect(idx.size).toBe(2);
+  });
+  it('last write wins on duplicate ids', () => {
+    const idx = buildShapeIndex([{ id: 'x', n: 1 }, { id: 'x', n: 2 }]);
+    expect(idx.get('x').n).toBe(2);
+  });
+});

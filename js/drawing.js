@@ -1,7 +1,7 @@
 import * as Y from 'yjs';
 import { generateId, safeColor, safeNumber, safeToolName } from './utils.js';
 import { sanitizeShape } from './shape-schema.js';
-import { arrowHeadPoints, polygonPoints, pointInPolygon, dashPattern, textBounds, isDegenerateShape } from './draw-geometry.js';
+import { arrowHeadPoints, polygonPoints, pointInPolygon, dashPattern, textBounds, isDegenerateShape, buildShapeIndex } from './draw-geometry.js';
 import { wrapText } from './text-wrap.js';
 import {
   updateCursorPosition,
@@ -123,6 +123,10 @@ let currentBoardObserver = null;
 // the other. We must re-subscribe to the live instance or remote edits stop
 // triggering redraws even though the document itself syncs fine.
 let observedBoardArray = null;
+
+// Non-null ONLY during a synchronous redrawCanvas pass. findShapeById prefers it
+// to avoid O(n) board.toArray() scans while resolving connector endpoints.
+let shapeIndex = null;
 
 // Viewport state for infinite canvas
 let viewport = {
@@ -2101,10 +2105,10 @@ function findShapeAtPoint(x, y) {
 }
 
 function findShapeById(id) {
+  if (shapeIndex) return shapeIndex.get(id) || null;
   const boardName = getCurrentBoard();
   const board = boards.get(boardName);
   if (!board) return null;
-
   const items = board.toArray();
   return items.find(item => item.id === id) || null;
 }
@@ -2434,56 +2438,44 @@ function redrawCanvas() {
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Apply viewport transform for world-space rendering
-  ctx.save();
-  ctx.scale(viewport.zoom, viewport.zoom);
-  ctx.translate(-viewport.x, -viewport.y);
+  const items = board.toArray();
+  shapeIndex = buildShapeIndex(items);
+  try {
+    // Apply viewport transform for world-space rendering
+    ctx.save();
+    ctx.scale(viewport.zoom, viewport.zoom);
+    ctx.translate(-viewport.x, -viewport.y);
 
-  let hasOverlay = false;
+    let hasOverlay = false;
 
-  board.forEach((item) => {
-    // Skip the committed shape being edited (its live state is drawn in
-    // drawLocalTextPreview). Applies to both text and sticky notes.
-    if (editingTextId === item.id && (item.tool === 'text' || item.tool === 'sticky')) return;
+    items.forEach((item) => {
+      if (editingTextId === item.id && (item.tool === 'text' || item.tool === 'sticky')) return;
+      drawShape(item);
+      const isSelected = selectedIds.has(item.id);
+      const isHovered = item.id === hoveredId && !isSelected;
+      if (isSelected || isHovered) {
+        drawShapeOverlayWorld(item, isSelected);
+        hasOverlay = true;
+      }
+    });
 
-    drawShape(item);
+    drawRemoteDrawings();
+    drawLasers();
+    drawLocalTextPreview();
 
-    // Draw selection/hover overlay (in world space)
-    const isSelected = selectedIds.has(item.id);
-    const isHovered = item.id === hoveredId && !isSelected;
+    ctx.restore();
 
-    if (isSelected || isHovered) {
-      drawShapeOverlayWorld(item, isSelected);
-      hasOverlay = true;
-    }
-  });
+    const firstSelectedId = selectedIds.size > 0 ? selectedIds.values().next().value : null;
+    items.forEach((item) => {
+      const isSelected = selectedIds.has(item.id);
+      const isHovered = item.id === hoveredId && !isSelected;
+      const showControls = (isSelected && item.id === firstSelectedId) || isHovered;
+      if (showControls) showShapeControlsScreen(item, isSelected);
+    });
 
-  // Draw remote users' in-progress drawings (live preview)
-  drawRemoteDrawings();
-
-  // Draw laser pointers (local + remote, ephemeral, awareness-only)
-  drawLasers();
-
-  // Draw local text being created (live preview)
-  drawLocalTextPreview();
-
-  ctx.restore();
-
-  // Draw UI controls in screen space (after restoring transform)
-  // Only show controls for the first selected shape (or hovered shape)
-  const firstSelectedId = selectedIds.size > 0 ? selectedIds.values().next().value : null;
-  board.forEach((item) => {
-    const isSelected = selectedIds.has(item.id);
-    const isHovered = item.id === hoveredId && !isSelected;
-    const showControls = (isSelected && item.id === firstSelectedId) || isHovered;
-    if (showControls) {
-      showShapeControlsScreen(item, isSelected);
-    }
-  });
-
-  // Hide controls if no shape is selected or hovered
-  if (!hasOverlay) {
-    hideShapeControls();
+    if (!hasOverlay) hideShapeControls();
+  } finally {
+    shapeIndex = null; // index is only valid within this synchronous pass
   }
 }
 
