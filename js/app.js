@@ -381,18 +381,17 @@ async function main() {
   const inviteBtn = document.getElementById('invite-btn');
   if (inviteBtn) {
     inviteBtn.onclick = async () => {
-      const includePassword = document.getElementById('include-password')?.checked || false;
-      const link = getShareableLink(includePassword);
+      const link = getShareableLink(false);
 
-      // Listen for link update requests from the modal
+      // The modal asks for an updated link when the permission radio changes.
       const handleLinkUpdate = (e) => {
-        const { permission, includePassword: includePass } = e.detail;
-        const newLink = getShareableLink(includePass, permission);
+        const { permission } = e.detail;
+        const newLink = getShareableLink(false, permission);
         window.dispatchEvent(new CustomEvent('invite-link-updated', { detail: { link: newLink } }));
       };
       window.addEventListener('update-invite-link', handleLinkUpdate);
 
-      const result = await showInviteModal(link, isEncrypted, includePassword);
+      await showInviteModal(link, isEncrypted, false);
 
       window.removeEventListener('update-invite-link', handleLinkUpdate);
     };

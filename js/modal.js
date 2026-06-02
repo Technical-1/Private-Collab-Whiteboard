@@ -223,16 +223,12 @@ export function showInviteModal(currentLink, isEncrypted, includePassword) {
     const cancelBtn = modalContainer.querySelector('#modal-cancel');
     const linkInput = modalContainer.querySelector('#modal-share-link');
     const permissionRadios = modalContainer.querySelectorAll('input[name="permission"]');
-    const includePasswordCheck = modalContainer.querySelector('#modal-include-password');
 
-    // Function to update the link based on selections
+    // Function to update the link based on the selected permission.
     const updateLink = () => {
       const permission = modalContainer.querySelector('input[name="permission"]:checked').value;
-      const includePass = includePasswordCheck?.checked || false;
-
-      // Dispatch event to get updated link
       const event = new CustomEvent('update-invite-link', {
-        detail: { permission, includePassword: includePass }
+        detail: { permission },
       });
       window.dispatchEvent(event);
     };
@@ -240,10 +236,7 @@ export function showInviteModal(currentLink, isEncrypted, includePassword) {
     permissionRadios.forEach(radio => {
       radio.addEventListener('change', updateLink);
     });
-
-    if (includePasswordCheck) {
-      includePasswordCheck.addEventListener('change', updateLink);
-    }
+    // (removed: includePasswordCheck change listener — the element never existed)
 
     // Listen for link updates
     const linkUpdateHandler = (e) => {
