@@ -2,7 +2,7 @@ import * as Y from 'yjs';
 import { generateId, safeColor, safeNumber, safeToolName } from './utils.js';
 import { sanitizeShape, clampPoints, safeStrokeWidth } from './shape-schema.js';
 import { arrowHeadPoints, polygonPoints, pointInPolygon, dashPattern, textBounds, isDegenerateShape, buildShapeIndex } from './draw-geometry.js';
-import { wrapText } from './text-wrap.js';
+import { wrapMultiline } from './text-wrap.js';
 import {
   updateCursorPosition,
   clearCursorPosition,
@@ -2939,7 +2939,7 @@ function drawSticky(x, y, width, height, fillColor, text, fontSize) {
     // and wrapText's per-char hard-break does an O(n) measureText scan per line.
     // No real note exceeds this, and only what fits the note height renders anyway.
     const capped = text.length > 4000 ? text.slice(0, 4000) : text;
-    const lines = wrapText((s) => ctx.measureText(s).width, capped, width - pad * 2);
+    const lines = wrapMultiline((s) => ctx.measureText(s).width, capped, width - pad * 2);
     for (let i = 0; i < lines.length; i++) {
       const ly = y + pad + i * (fs * 1.3);
       if (ly + fs <= y + height - pad) ctx.fillText(lines[i], x + pad, ly);

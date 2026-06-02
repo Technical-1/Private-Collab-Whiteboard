@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { wrapText } from '../js/text-wrap.js';
+import { wrapText, wrapMultiline } from '../js/text-wrap.js';
 
 const measure = (s) => s.length * 10; // 10px per char, deterministic
 
@@ -24,5 +24,24 @@ describe('wrapText', () => {
   it('merges a hard-break remainder with the next word when it fits', () => {
     // "abcdefg hi" @60: hard-break -> "abcdef" + remainder "g"; then "g hi" (40) <= 60
     expect(wrapText(measure, 'abcdefg hi', 60)).toEqual(['abcdef', 'g hi']);
+  });
+});
+
+describe('wrapMultiline', () => {
+  // A measure() where every char is 1 unit wide.
+  const measure = (s) => s.length;
+
+  it('keeps explicit newlines as separate lines', () => {
+    expect(wrapMultiline(measure, 'a\nb\nc', 100)).toEqual(['a', 'b', 'c']);
+  });
+  it('wraps each segment by width and preserves blank lines', () => {
+    // maxWidth 3: "aaaa" hard-breaks; blank line between stays.
+    expect(wrapMultiline(measure, 'aaaa\n\nbb', 3)).toEqual(['aaa', 'a', '', 'bb']);
+  });
+  it('single line with no newline behaves like wrapText', () => {
+    expect(wrapMultiline(measure, 'hello world', 100)).toEqual(['hello world']);
+  });
+  it('non-string input returns []', () => {
+    expect(wrapMultiline(measure, null, 100)).toEqual([]);
   });
 });
