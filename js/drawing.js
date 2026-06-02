@@ -17,7 +17,7 @@ import {
 } from './awareness.js';
 import { pruneTrail, MAX_TRAIL_AGE_MS } from './laser-trail.js';
 import { showAlert } from './modal.js';
-import { resolveAnchor, nearestAnchors, danglingConnectorIndices } from './connector-geometry.js';
+import { resolveAnchor, nearestAnchors, danglingConnectorIndices, edgeAnchorPoints } from './connector-geometry.js';
 import { ZOOM_MIN, ZOOM_MAX, HIT_TEST_THRESHOLD } from './config.js';
 
 let canvas = null;
@@ -2492,6 +2492,7 @@ function redrawCanvas() {
       }
     });
 
+    drawConnectorHints(items);
     drawRemoteDrawings();
     drawLasers();
     drawLocalTextPreview();
@@ -2510,6 +2511,25 @@ function redrawCanvas() {
   } finally {
     shapeIndex = null; // index is only valid within this synchronous pass
   }
+}
+
+// While the connector tool is active, dot every non-connector shape's edge
+// midpoints so it's clear where a connector can attach. Hints only — drop still
+// snaps to the nearest anchor via nearestAnchors.
+function drawConnectorHints(items) {
+  if (currentTool !== 'connector') return;
+  ctx.save();
+  ctx.fillStyle = '#6366f1';
+  const r = 4 / viewport.zoom;
+  for (const s of items) {
+    if (!s || s.tool === 'connector') continue;
+    for (const p of edgeAnchorPoints(getShapeBounds(s))) {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
 }
 
 // Draw remote users' in-progress drawings

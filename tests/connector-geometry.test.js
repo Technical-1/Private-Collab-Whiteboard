@@ -75,3 +75,17 @@ describe('danglingConnectorIndices', () => {
     expect(danglingConnectorIndices(items)).toEqual([]);
   });
 });
+
+import { edgeAnchorPoints } from '../js/connector-geometry.js';
+
+describe('edgeAnchorPoints', () => {
+  it('returns the four edge midpoints of a bbox', () => {
+    const pts = edgeAnchorPoints({ x: 0, y: 0, width: 10, height: 20 });
+    expect(pts).toEqual([
+      { x: 5, y: 0 },   // n
+      { x: 10, y: 10 }, // e
+      { x: 5, y: 20 },  // s
+      { x: 0, y: 10 },  // w
+    ]);
+  });
+});
