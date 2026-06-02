@@ -148,7 +148,7 @@ async function main() {
   });
 
   // Set containers for rendering
-  setUsersContainer(document.getElementById('users'));
+  setUsersContainer(document.getElementById('presence'));
   setCursorsContainer(document.getElementById('cursors'));
   setBoardsContainer(document.getElementById('boards'));
 

@@ -3107,3 +3107,33 @@ body:not(.read-only-mode) .read-only-banner {
   box-sizing: border-box;
   z-index: 30;
 }
+
+/* ============================================
+   PRESENCE AVATARS (top-right overlay)
+   ============================================ */
+.presence-cluster {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: flex;
+  flex-direction: row-reverse; /* stack overlap with newest on top-left */
+  align-items: center;
+  gap: 0;
+  z-index: 20;
+  pointer-events: none;
+}
+.presence-cluster .avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--avatar-color, #6366f1);
+  color: #fff;
+  font: 600 13px/32px Inter, sans-serif;
+  text-align: center;
+  border: 2px solid var(--bg, #15151f);
+  margin-left: -8px;            /* overlap */
+  pointer-events: auto;
+  user-select: none;
+}
+.presence-cluster .avatar-self { box-shadow: 0 0 0 2px #fff inset; }
+.presence-cluster .avatar-more { background: #44445a; font-size: 11px; }
