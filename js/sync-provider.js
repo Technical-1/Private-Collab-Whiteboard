@@ -234,8 +234,9 @@ export class SyncProvider {
   }
 
   /**
-   * Send a typed message. Awareness messages are sent unencrypted; all other
-   * types are AES-encrypted when an encryptionKey is configured.
+   * Send a typed message. Only the plaintext presence beacon (PRESENCE_PROBE)
+   * stays unencrypted in capability rooms; all other types — including AWARENESS
+   * — are AES-encrypted when an encryptionKey is configured.
    * @param {number} type - Message type (use MSG constants from protocol.js)
    * @param {Uint8Array} payload
    */
@@ -243,7 +244,10 @@ export class SyncProvider {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
     try {
       let finalPayload = payload;
-      if (type !== MSG.AWARENESS && this.isEncrypted && this.encrypt) {
+      // Only the plaintext presence beacon stays unencrypted in capability rooms.
+      // AWARENESS now rides the AES path so live cursors/laser/in-progress shapes
+      // and typed text are never exposed to the relay.
+      if (type !== MSG.PRESENCE_PROBE && this.isEncrypted && this.encrypt) {
         finalPayload = await this.encrypt(payload, this.encryptionKey);
       }
       const message = new Uint8Array(1 + finalPayload.length);

@@ -83,3 +83,56 @@ describe('SyncProvider receive wiring (integration contract)', () => {
     expect(called).toBe(false);
   });
 });
+
+// A WebSocket double that reports OPEN and records sent frames.
+class CapturingWS {
+  static OPEN = 1;
+  constructor() {
+    this.readyState = 1; this.binaryType = ''; this.sent = [];
+    this.onopen = this.onmessage = this.onclose = this.onerror = null;
+    CapturingWS.last = this;
+  }
+  close() { this.readyState = 3; }
+  send(buf) { this.sent.push(new Uint8Array(buf)); }
+}
+
+// XOR-free "encryption" double: prepend 0xEE so we can detect it ran; decrypt strips it.
+const fakeEncrypt = async (data) => { const o = new Uint8Array(data.length + 1); o[0] = 0xEE; o.set(data, 1); return o; };
+const fakeDecrypt = async (data) => data.slice(1);
+
+describe('SyncProvider awareness encryption', () => {
+  let prevWS;
+  beforeEach(() => { prevWS = globalThis.WebSocket; globalThis.WebSocket = CapturingWS; });
+  afterEach(() => { globalThis.WebSocket = prevWS; });
+
+  it('encrypts AWARENESS frames in a capability room', async () => {
+    const provider = new SyncProvider('localhost:9999', 'room', new Y.Doc(), {
+      encryptionKey: {}, encrypt: fakeEncrypt, decrypt: fakeDecrypt,
+    });
+    await provider.send(MSG.AWARENESS, new Uint8Array([1, 2, 3]));
+    const frame = CapturingWS.last.sent.at(-1);
+    provider.destroy();
+    expect(frame[0]).toBe(MSG.AWARENESS); // type byte preserved
+    expect(frame[1]).toBe(0xEE);          // payload was encrypted
+  });
+
+  it('does NOT encrypt PRESENCE_PROBE even in a capability room', async () => {
+    const provider = new SyncProvider('localhost:9999', 'room', new Y.Doc(), {
+      encryptionKey: {}, encrypt: fakeEncrypt, decrypt: fakeDecrypt,
+    });
+    await provider.send(MSG.PRESENCE_PROBE, new Uint8Array([7]));
+    const frame = CapturingWS.last.sent.at(-1);
+    provider.destroy();
+    expect(frame[0]).toBe(MSG.PRESENCE_PROBE);
+    expect(frame[1]).toBe(7); // raw, not encrypted
+  });
+
+  it('leaves AWARENESS plaintext in an open (passwordless) room', async () => {
+    const provider = new SyncProvider('localhost:9999', 'room', new Y.Doc(), {}); // no key
+    await provider.send(MSG.AWARENESS, new Uint8Array([1, 2, 3]));
+    const frame = CapturingWS.last.sent.at(-1);
+    provider.destroy();
+    expect(frame[0]).toBe(MSG.AWARENESS);
+    expect(frame[1]).toBe(1); // raw
+  });
+});
