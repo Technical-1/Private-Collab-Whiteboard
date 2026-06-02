@@ -59,3 +59,16 @@ export function textBounds(shape, textWidth) {
   const fs = shape.fontSize || 20;
   return { x: shape.x, y: shape.y - fs, width: textWidth, height: fs };
 }
+
+// True if a freshly-drawn shape is too small to keep (a click with no drag would
+// otherwise commit an invisible 0-size shape into the CRDT). `dims` carries the
+// drag delta {dx,dy} for bbox/segment tools or {radius} for circles.
+export function isDegenerateShape(tool, dims, minSize = 2) {
+  if (tool === 'circle') return (dims.radius || 0) < minSize;
+  if (tool === 'line' || tool === 'arrow') {
+    return Math.hypot(dims.dx || 0, dims.dy || 0) < minSize;
+  }
+  // rect / diamond / triangle / ellipse: degenerate only if BOTH dims are tiny
+  // (a thin tall/wide box is still a legitimate shape).
+  return Math.abs(dims.dx || 0) < minSize && Math.abs(dims.dy || 0) < minSize;
+}

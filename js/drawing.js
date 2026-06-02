@@ -1,7 +1,7 @@
 import * as Y from 'yjs';
 import { generateId, safeColor, safeNumber, safeToolName } from './utils.js';
 import { sanitizeShape } from './shape-schema.js';
-import { arrowHeadPoints, polygonPoints, pointInPolygon, dashPattern, textBounds } from './draw-geometry.js';
+import { arrowHeadPoints, polygonPoints, pointInPolygon, dashPattern, textBounds, isDegenerateShape } from './draw-geometry.js';
 import { wrapText } from './text-wrap.js';
 import {
   updateCursorPosition,
@@ -609,6 +609,15 @@ function handleMouseUp(e) {
     freehandPoints = [];
     redrawCanvas();
     return;
+  }
+
+  // Drop click-without-drag phantoms before they reach the CRDT.
+  if (['line', 'arrow', 'rect', 'diamond', 'triangle', 'ellipse', 'circle'].includes(currentTool)) {
+    const radius = Math.sqrt(Math.pow(x - startX, 2) + Math.pow(y - startY, 2));
+    if (isDegenerateShape(currentTool, { dx: x - startX, dy: y - startY, radius })) {
+      redrawCanvas(); // clear the in-progress preview
+      return;
+    }
   }
 
   // Handle shape tools

@@ -68,3 +68,23 @@ describe('textBounds', () => {
     expect(b).toEqual({ x: 0, y: 30, width: 40, height: 20 });
   });
 });
+
+import { isDegenerateShape } from '../js/draw-geometry.js';
+
+describe('isDegenerateShape', () => {
+  it('flags a zero-drag rect/diamond/triangle/ellipse', () => {
+    for (const t of ['rect', 'diamond', 'triangle', 'ellipse']) {
+      expect(isDegenerateShape(t, { dx: 0, dy: 0 })).toBe(true);
+      expect(isDegenerateShape(t, { dx: 1, dy: 1 })).toBe(true);   // below 2px min
+      expect(isDegenerateShape(t, { dx: 50, dy: 0 })).toBe(false); // thin but real
+    }
+  });
+  it('flags a zero-length line/arrow', () => {
+    expect(isDegenerateShape('line', { dx: 1, dy: 1 })).toBe(true);
+    expect(isDegenerateShape('arrow', { dx: 10, dy: 0 })).toBe(false);
+  });
+  it('flags a zero-radius circle', () => {
+    expect(isDegenerateShape('circle', { radius: 1 })).toBe(true);
+    expect(isDegenerateShape('circle', { radius: 30 })).toBe(false);
+  });
+});
