@@ -1063,10 +1063,14 @@ export function deleteSelectedShapes() {
   if (selectedIds.size === 0) return;
   if (!canMutate()) return;
 
-  const idsToDelete = [...selectedIds];
+  // Skip locked shapes up front so the batch is a single clean transaction and
+  // deleteShape never fires its locked-shape alert mid-transaction (which would
+  // commit a partial batch).
+  const idsToDelete = [...selectedIds].filter(id => !findShapeById(id)?.locked);
+  if (idsToDelete.length === 0) return;
   const board = boards.get(getCurrentBoard());
-  // One transaction => one undo step for the whole multi-delete (and the
-  // dangling-connector cascade each deleteShape triggers).
+  // board.doc is present in normal operation (the array is observed/inserted);
+  // the else branch is defensive for a not-yet-inserted Y.Array.
   if (board?.doc) {
     board.doc.transact(() => idsToDelete.forEach(id => deleteShape(id)));
   } else {

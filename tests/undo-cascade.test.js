@@ -31,6 +31,7 @@ describe('connector cascade delete is undo-symmetric', () => {
     deleteWithCascade(doc, board, 'a');
     let ids = board.toArray().map(s => s.id);
     expect(ids).toEqual(['b']); // 'a' and dangling connector 'c' both gone
+    expect(um.undoStack.length).toBe(1);
 
     um.undo();
     ids = board.toArray().map(s => s.id).sort();
@@ -71,6 +72,7 @@ describe('multi-select delete is one undo step', () => {
     const { doc, board, um } = setupFive();
     deleteManyInOneStep(doc, board, ['a', 'd', 'e']);
     expect(board.toArray().map(s => s.id).sort()).toEqual(['b', 'c']);
+    expect(um.undoStack.length).toBe(1);
 
     um.undo();
     expect(board.toArray().map(s => s.id).sort()).toEqual(['a', 'b', 'c', 'd', 'e']);
@@ -94,6 +96,7 @@ describe('multi-shape paste is one undo step', () => {
       { id: 'p3', tool: 'rect', startX: 12, startY: 0, width: 5, height: 5 },
     ]);
     expect(board.length).toBe(before.length + 3);
+    expect(um.undoStack.length).toBe(1);
 
     um.undo();
     expect(board.toArray().map(s => s.id).sort()).toEqual(before);
