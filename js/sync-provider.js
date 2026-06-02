@@ -48,6 +48,7 @@ export class SyncProvider {
     this.wsUnsuccessfulReconnects = 0;
     this.maxBackoffTime = 2500;
     this._destroyed = false; // once destroyed, never reconnect
+    this._mismatchSignaled = false; // fire room-access-mismatch at most once
 
     // Callbacks. onMessage/onConnect are PUBLIC settable properties: the signing
     // layer (SignedDocSync) assigns them after construction, so they must not be
@@ -239,6 +240,30 @@ export class SyncProvider {
   async _broadcastPresenceProbe() {
     const bytes = new TextEncoder().encode(JSON.stringify({ enc: this.isEncrypted }));
     await this.send(MSG.PRESENCE_PROBE, bytes);
+  }
+
+  /**
+   * A peer announced its encryption status (plaintext probe).
+   *  - keyless client + peer is encrypted -> we opened a bare URL of a
+   *    password-protected room; signal the app once.
+   *  - encrypted client + peer is keyless -> echo our probe so the just-joined
+   *    keyless visitor learns we are here (relay does not replay). The keyless
+   *    side never echoes back, so this terminates.
+   */
+  _handlePresenceProbe(payload) {
+    let parsed;
+    try { parsed = JSON.parse(new TextDecoder().decode(payload)); } catch { return; }
+    if (!parsed || typeof parsed.enc !== 'boolean') return;
+
+    if (parsed.enc && !this.isEncrypted) {
+      if (this._mismatchSignaled) return;
+      this._mismatchSignaled = true;
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('room-access-mismatch'));
+      }
+    } else if (!parsed.enc && this.isEncrypted) {
+      this._broadcastPresenceProbe();
+    }
   }
 
   async _broadcastAwareness(changedClients) {

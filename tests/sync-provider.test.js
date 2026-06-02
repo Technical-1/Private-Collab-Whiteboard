@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, afterAll, vi } from 'vitest';
 import * as Y from 'yjs';
 import { SyncProvider } from '../js/sync-provider.js';
 import { MSG } from '../js/protocol.js';
@@ -101,7 +101,21 @@ const fakeEncrypt = async (data) => { const o = new Uint8Array(data.length + 1);
 const fakeDecrypt = async (data) => data.slice(1);
 
 describe('SyncProvider presence probe', () => {
-  let prevWS;
+  let prevWS, prevWindow;
+  // In node env `window` is undefined; polyfill it with an EventTarget so
+  // the `typeof window !== 'undefined'` guard in _handlePresenceProbe
+  // resolves and CustomEvent dispatch/listening works.
+  beforeAll(() => {
+    prevWindow = globalThis.window;
+    if (typeof window === 'undefined') {
+      const et = new EventTarget();
+      globalThis.window = et;
+    }
+  });
+  afterAll(() => {
+    if (prevWindow === undefined) delete globalThis.window;
+    else globalThis.window = prevWindow;
+  });
   beforeEach(() => { prevWS = globalThis.WebSocket; globalThis.WebSocket = CapturingWS; });
   afterEach(() => { globalThis.WebSocket = prevWS; });
 
@@ -115,6 +129,49 @@ describe('SyncProvider presence probe', () => {
     expect(probe).toBeDefined();
     const json = JSON.parse(new TextDecoder().decode(probe.slice(1)));
     expect(json.enc).toBe(true);
+  });
+
+  function probeFrame(enc) {
+    const body = new TextEncoder().encode(JSON.stringify({ enc }));
+    const f = new Uint8Array(1 + body.length);
+    f[0] = MSG.PRESENCE_PROBE; f.set(body, 1);
+    return f.buffer;
+  }
+
+  it('fires room-access-mismatch once when a keyless client sees an enc:true probe', async () => {
+    const provider = new SyncProvider('localhost:9999', 'room', new Y.Doc(), {}); // keyless
+    const events = [];
+    const handler = (e) => events.push(e.type);
+    window.addEventListener('room-access-mismatch', handler);
+    await provider._onMessage({ data: probeFrame(true) });
+    await provider._onMessage({ data: probeFrame(true) }); // second time: no duplicate
+    window.removeEventListener('room-access-mismatch', handler);
+    provider.destroy();
+    expect(events).toEqual(['room-access-mismatch']);
+  });
+
+  it('does NOT fire mismatch for an encrypted client receiving an enc:true probe', async () => {
+    const provider = new SyncProvider('localhost:9999', 'room', new Y.Doc(), {
+      encryptionKey: {}, encrypt: fakeEncrypt, decrypt: fakeDecrypt,
+    });
+    let fired = false;
+    const handler = () => { fired = true; };
+    window.addEventListener('room-access-mismatch', handler);
+    await provider._onMessage({ data: probeFrame(true) });
+    window.removeEventListener('room-access-mismatch', handler);
+    provider.destroy();
+    expect(fired).toBe(false);
+  });
+
+  it('an encrypted client echoes its probe when it sees an enc:false probe', async () => {
+    const provider = new SyncProvider('localhost:9999', 'room', new Y.Doc(), {
+      encryptionKey: {}, encrypt: fakeEncrypt, decrypt: fakeDecrypt,
+    });
+    CapturingWS.last.sent.length = 0; // ignore connect-time frames
+    await provider._onMessage({ data: probeFrame(false) });
+    const echoed = CapturingWS.last.sent.find(f => f[0] === MSG.PRESENCE_PROBE);
+    provider.destroy();
+    expect(echoed).toBeDefined();
   });
 });
 
