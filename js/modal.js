@@ -166,7 +166,7 @@ export function showAlert(title, description = '') {
 }
 
 // Custom modal for inviting users with role selection
-export function showInviteModal(currentLink, isEncrypted, includePassword) {
+export function showInviteModal(currentLink, isEncrypted) {
   return new Promise((resolve) => {
     currentResolve = resolve;
 
@@ -236,8 +236,6 @@ export function showInviteModal(currentLink, isEncrypted, includePassword) {
     permissionRadios.forEach(radio => {
       radio.addEventListener('change', updateLink);
     });
-    // (removed: includePasswordCheck change listener — the element never existed)
-
     // Listen for link updates
     const linkUpdateHandler = (e) => {
       linkInput.value = e.detail.link;

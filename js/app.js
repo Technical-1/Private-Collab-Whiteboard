@@ -392,7 +392,7 @@ async function main() {
       };
       window.addEventListener('update-invite-link', handleLinkUpdate);
 
-      await showInviteModal(link, isEncrypted, false);
+      await showInviteModal(link, isEncrypted);
 
       window.removeEventListener('update-invite-link', handleLinkUpdate);
     };
