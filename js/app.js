@@ -313,6 +313,7 @@ async function main() {
   };
 
   document.getElementById('clear-board').onclick = async () => {
+    if (readOnly) return;
     const confirmed = await showConfirm(
       'Clear Board?',
       'This will remove all drawings from the current board. This action cannot be undone.',
@@ -487,27 +488,30 @@ async function main() {
   const moreBtn = document.getElementById('more-btn');
   const moreMenu = document.getElementById('more-menu');
   if (moreBtn && moreMenu) {
-    const closeMore = () => {
+    const onOutside = (e) => {
+      if (!moreMenu.contains(e.target) && e.target !== moreBtn && !moreBtn.contains(e.target)) closeMore();
+    };
+    // Close on Escape — but only when no modal is open, so Escape in a modal
+    // launched from the popover dismisses the modal, not the popover under it.
+    const onEsc = (e) => {
+      if (e.key === 'Escape' && !document.querySelector('.app-modal.active')) closeMore();
+    };
+    function openMore() {
+      moreMenu.classList.remove('u-hidden');
+      moreBtn.setAttribute('aria-expanded', 'true');
+      document.addEventListener('click', onOutside, true);
+      document.addEventListener('keydown', onEsc, true);
+    }
+    function closeMore() {
       moreMenu.classList.add('u-hidden');
       moreBtn.setAttribute('aria-expanded', 'false');
       document.removeEventListener('click', onOutside, true);
       document.removeEventListener('keydown', onEsc, true);
-    };
-    const onOutside = (e) => {
-      if (!moreMenu.contains(e.target) && e.target !== moreBtn && !moreBtn.contains(e.target)) closeMore();
-    };
-    const onEsc = (e) => { if (e.key === 'Escape') closeMore(); };
+    }
     moreBtn.addEventListener('click', (e) => {
       e.stopPropagation();
-      const open = moreMenu.classList.toggle('u-hidden') === false;
-      moreBtn.setAttribute('aria-expanded', String(open));
-      if (open) {
-        document.addEventListener('click', onOutside, true);
-        document.addEventListener('keydown', onEsc, true);
-      } else {
-        document.removeEventListener('click', onOutside, true);
-        document.removeEventListener('keydown', onEsc, true);
-      }
+      if (moreMenu.classList.contains('u-hidden')) openMore();
+      else closeMore();
     });
   }
 

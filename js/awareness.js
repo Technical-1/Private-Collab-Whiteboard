@@ -218,7 +218,7 @@ function renderUsers(awareness) {
     const el = document.createElement('div');
     el.className = isLocal ? 'avatar avatar-self' : 'avatar';
     el.style.setProperty('--avatar-color', color);
-    el.title = `${user.name}${isLocal ? ' (you)' : ''}`;
+    el.title = `${escapeHtml(user.name)}${isLocal ? ' (you)' : ''}`;
     el.textContent = initial;
     usersContainer.appendChild(el);
   });
