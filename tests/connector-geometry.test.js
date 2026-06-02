@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveAnchor, nearestAnchors, isDangling, danglingConnectorIndices } from '../js/connector-geometry.js';
+import { resolveAnchor, nearestAnchors, isDangling, danglingConnectorIndices, edgeAnchorPoints } from '../js/connector-geometry.js';
 
 const bbox = { x: 0, y: 0, width: 10, height: 20 };
 
@@ -75,8 +75,6 @@ describe('danglingConnectorIndices', () => {
     expect(danglingConnectorIndices(items)).toEqual([]);
   });
 });
-
-import { edgeAnchorPoints } from '../js/connector-geometry.js';
 
 describe('edgeAnchorPoints', () => {
   it('returns the four edge midpoints of a bbox', () => {
