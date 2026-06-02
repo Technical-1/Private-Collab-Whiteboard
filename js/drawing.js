@@ -1907,7 +1907,7 @@ function moveShape(shapeId, dx, dy) {
     updated.y += dy;
   } else if (shape.tool === 'freehand' || shape.tool === 'highlight' || shape.tool === 'eraser') {
     if (updated.points) {
-      updated.points = updated.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
+      updated.points = clampPoints(updated.points).map(p => ({ x: p.x + dx, y: p.y + dy }));
     }
   } else if (shape.tool === 'arrow') {
     updated.startX += dx;
@@ -2750,11 +2750,11 @@ function drawShapePreview(shape, dx, dy) {
     drawSticky(b.x + dx, b.y + dy, b.width, b.height, shape.fillColor, shape.text, shape.fontSize);
   } else if (shape.tool === 'highlight') {
     // The function's outer save/restore (below) scopes this globalAlpha override.
-    const movedPoints = shape.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
+    const movedPoints = clampPoints(shape.points).map(p => ({ x: p.x + dx, y: p.y + dy }));
     ctx.globalAlpha = 0.35;
     drawFreehand(movedPoints, shape.color, safeStrokeWidth(shape.strokeWidth));
   } else if (shape.tool === 'freehand' || shape.tool === 'eraser') {
-    const movedPoints = shape.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
+    const movedPoints = clampPoints(shape.points).map(p => ({ x: p.x + dx, y: p.y + dy }));
     drawFreehand(movedPoints, shape.color, safeStrokeWidth(shape.strokeWidth));
   } else if (shape.tool === 'connector') {
     // A connector has no own coordinates; it's anchored to its endpoints. Draw it
