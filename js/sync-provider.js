@@ -147,6 +147,9 @@ export class SyncProvider {
     // Send our current awareness state
     this._broadcastAwareness([this.doc.clientID]);
 
+    // Announce our encryption status so cross-mode peers can detect a mismatch.
+    this._broadcastPresenceProbe();
+
     // Let the signing layer (re)bootstrap now that the socket is OPEN.
     if (this.onConnect) this.onConnect();
   }
@@ -225,6 +228,17 @@ export class SyncProvider {
     );
 
     setTimeout(() => this.connect(), backoff);
+  }
+
+  /**
+   * Plaintext presence beacon. Carries only whether THIS client holds the room
+   * capability, so a keyless visitor to an encrypted room can detect the
+   * mismatch (their own awareness is plaintext, but encrypted peers' awareness
+   * no longer decodes for them). Never carries cursors/names/content.
+   */
+  async _broadcastPresenceProbe() {
+    const bytes = new TextEncoder().encode(JSON.stringify({ enc: this.isEncrypted }));
+    await this.send(MSG.PRESENCE_PROBE, bytes);
   }
 
   async _broadcastAwareness(changedClients) {

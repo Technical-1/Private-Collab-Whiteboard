@@ -100,6 +100,24 @@ class CapturingWS {
 const fakeEncrypt = async (data) => { const o = new Uint8Array(data.length + 1); o[0] = 0xEE; o.set(data, 1); return o; };
 const fakeDecrypt = async (data) => data.slice(1);
 
+describe('SyncProvider presence probe', () => {
+  let prevWS;
+  beforeEach(() => { prevWS = globalThis.WebSocket; globalThis.WebSocket = CapturingWS; });
+  afterEach(() => { globalThis.WebSocket = prevWS; });
+
+  it('broadcasts an enc:true probe on open for a capability room', async () => {
+    const provider = new SyncProvider('localhost:9999', 'room', new Y.Doc(), {
+      encryptionKey: {}, encrypt: fakeEncrypt, decrypt: fakeDecrypt,
+    });
+    await provider._onOpen();
+    const probe = CapturingWS.last.sent.find(f => f[0] === MSG.PRESENCE_PROBE);
+    provider.destroy();
+    expect(probe).toBeDefined();
+    const json = JSON.parse(new TextDecoder().decode(probe.slice(1)));
+    expect(json.enc).toBe(true);
+  });
+});
+
 describe('SyncProvider awareness encryption', () => {
   let prevWS;
   beforeEach(() => { prevWS = globalThis.WebSocket; globalThis.WebSocket = CapturingWS; });
