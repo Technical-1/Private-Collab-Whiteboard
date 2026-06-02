@@ -1063,11 +1063,15 @@ export function deleteSelectedShapes() {
   if (selectedIds.size === 0) return;
   if (!canMutate()) return;
 
-  // Copy the set since deleteShape will modify it
   const idsToDelete = [...selectedIds];
-  idsToDelete.forEach(id => {
-    deleteShape(id);
-  });
+  const board = boards.get(getCurrentBoard());
+  // One transaction => one undo step for the whole multi-delete (and the
+  // dangling-connector cascade each deleteShape triggers).
+  if (board?.doc) {
+    board.doc.transact(() => idsToDelete.forEach(id => deleteShape(id)));
+  } else {
+    idsToDelete.forEach(id => deleteShape(id));
+  }
   redrawCanvas();
 }
 
