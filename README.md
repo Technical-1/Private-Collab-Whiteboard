@@ -2,7 +2,7 @@
 
 A real-time collaborative whiteboard application with peer-to-peer synchronization, end-to-end encryption, and infinite canvas support.
 
-![Version](https://img.shields.io/badge/version-1.0.0-green.svg)
+![Version](https://img.shields.io/badge/version-2.0.0-green.svg)
 
 ## Features
 
