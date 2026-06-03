@@ -248,6 +248,15 @@ async function main() {
     };
   });
 
+  // Wire up arrowhead buttons
+  document.querySelectorAll('.arrowhead-btn').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.arrowhead-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      applyArrowHeads(btn.dataset.heads);
+    };
+  });
+
   // Wire up sticky note color palette. Swatch backgrounds are set here via CSSOM
   // (not an inline style attribute) because the production CSP forbids inline styles.
   document.querySelectorAll('.sticky-color').forEach(btn => {
@@ -315,6 +324,11 @@ async function main() {
       const defaultStyle = 'solid';
       document.querySelectorAll('.style-btn').forEach(b => {
         b.classList.toggle('active', b.dataset.style === defaultStyle);
+      });
+      // Restore arrowhead button highlight to the drawing module's current default.
+      const defaultHeads = 'end';
+      document.querySelectorAll('.arrowhead-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.heads === defaultHeads);
       });
     }
   });
@@ -679,6 +693,14 @@ function applyFontFamily(family) {
   }
 }
 
+function applyArrowHeads(value) {
+  if (drawingController.getSelectedIds().size > 0) {
+    drawingController.updateSelectedShapesProperty('arrowHeads', value);
+  } else {
+    drawingController.setArrowHeads(value);
+  }
+}
+
 /**
  * When a selection is active, populate the bottom-panel option controls
  * (thickness, fill, font, stroke style) from the first selected shape,
@@ -732,6 +754,13 @@ function populateControlsFromSelection() {
   if (fontFamilySelect && shape.fontFamily) {
     fontFamilySelect.value = shape.fontFamily;
   }
+
+  // Arrowheads — highlight the matching button from the selected shape
+  if (shape.arrowHeads) {
+    document.querySelectorAll('.arrowhead-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.heads === shape.arrowHeads);
+    });
+  }
 }
 
 function updateStrokePresetHighlight(width) {
@@ -762,7 +791,7 @@ function updateOptionsVisibility(toolName) {
 
   // Show/hide stroke options (hide for select, eraser-shape, and the laser
   // pointer — the laser uses a fixed width, so stroke controls are meaningless).
-  const hasStroke = !['select', 'eraser-shape', 'laser', 'sticky', 'connector'].includes(toolName);
+  const hasStroke = !['select', 'eraser-shape', 'laser', 'sticky'].includes(toolName);
   const strokeOption = document.querySelector('.stroke-option');
   if (strokeOption) {
     strokeOption.style.display = hasStroke ? 'flex' : 'none';
@@ -781,10 +810,17 @@ function updateOptionsVisibility(toolName) {
     optionDivider.style.display = (hasStroke && hasFill) ? 'block' : 'none';
   }
 
+  // Show/hide arrowheads control — only for arrow and connector tools
+  const isArrowTool = toolName === 'arrow' || toolName === 'connector';
+  const arrowOptions = document.querySelector('.arrow-options');
+  if (arrowOptions) {
+    arrowOptions.style.display = isArrowTool ? 'flex' : 'none';
+  }
+
   // Hide entire drawing-options container when no options are visible
   const drawingOptions = document.getElementById('drawing-options');
   if (drawingOptions) {
-    const hasAnyOptions = hasStroke || hasFill || isTextTool || isSticky;
+    const hasAnyOptions = hasStroke || hasFill || isTextTool || isSticky || isArrowTool;
     drawingOptions.style.display = hasAnyOptions ? 'flex' : 'none';
   }
 }

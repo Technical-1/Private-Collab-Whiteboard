@@ -400,6 +400,7 @@ export function setupDrawing(canvasEl, boardsMap, awarenessInstance, getBoardFn)
     subscribeToBoard,
     setStrokeWidth: (width) => { strokeWidth = width; },
     setStrokeStyle: (style) => { currentStrokeStyle = style; },
+    setArrowHeads: (value) => { currentArrowHeads = value; },
     setStickyColor: (c) => { currentStickyColor = c; },
     setFillEnabled: (enabled) => { fillEnabled = enabled; },
     setFillColor: (color) => { fillColor = color; },
@@ -620,7 +621,7 @@ function handleMouseUp(e) {
             tool: 'connector',
             fromId: connectorFromId, toId: target.id,
             fromAnchor: from, toAnchor: to,
-            strokeWidth, strokeStyle: 'solid', arrowHeads: 'end',
+            strokeWidth, strokeStyle: currentStrokeStyle, arrowHeads: currentArrowHeads,
           });
         }
       }

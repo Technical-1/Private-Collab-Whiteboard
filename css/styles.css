@@ -1005,6 +1005,40 @@ body {
   color: white;
 }
 
+/* Arrowhead segmented control */
+.arrowhead-group {
+  display: flex;
+  gap: 4px;
+}
+
+.arrowhead-btn {
+  min-width: 30px;
+  height: 26px;
+  padding: 0 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.arrowhead-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+}
+
+.arrowhead-btn.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: white;
+}
+
 /* Sticky-note color palette */
 .sticky-palette {
   display: flex;
