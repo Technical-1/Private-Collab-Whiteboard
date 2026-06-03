@@ -100,22 +100,15 @@ function deleteBoard(name) {
     updateCurrentBoard(awareness, 'default');
     if (onBoardSwitch) onBoardSwitch('default');
   }
-
-  renderBoardsList();
+  // boards.observe(renderBoardsList) fires for local deletes — no explicit call needed
 }
 
-// Active context menu element (only one at a time)
-let activeContextMenu = null;
-
-function removeBoardContextMenu() {
-  if (activeContextMenu) {
-    activeContextMenu.remove();
-    activeContextMenu = null;
-  }
-}
+// Cleanup fn for whichever context menu is currently open (null when none)
+let activeCleanup = null;
 
 function showBoardContextMenu(x, y, name) {
-  removeBoardContextMenu();
+  // Tear down any previously-open menu and its document listeners
+  if (activeCleanup) activeCleanup();
 
   const menu = document.createElement('div');
   menu.className = 'board-context-menu';
@@ -126,8 +119,24 @@ function showBoardContextMenu(x, y, name) {
   deleteBtn.className = 'board-context-menu-item board-context-menu-danger';
   deleteBtn.textContent = 'Delete board';
 
+  // Single teardown for ALL dismissal paths
+  function cleanup() {
+    document.removeEventListener('mousedown', onOutsideClick, true);
+    document.removeEventListener('keydown', onEscape, true);
+    menu.remove();
+    if (activeCleanup === cleanup) activeCleanup = null;
+  }
+
+  const onOutsideClick = (e) => {
+    if (!menu.contains(e.target)) cleanup();
+  };
+
+  const onEscape = (e) => {
+    if (e.key === 'Escape') cleanup();
+  };
+
   deleteBtn.addEventListener('click', async () => {
-    removeBoardContextMenu();
+    cleanup(); // close menu + remove listeners before awaiting
     const confirmed = await showConfirm(
       'Delete board?',
       `Delete "${name}" and its drawings? You can undo with Ctrl+Z.`,
@@ -142,28 +151,10 @@ function showBoardContextMenu(x, y, name) {
 
   menu.appendChild(deleteBtn);
   document.body.appendChild(menu);
-  activeContextMenu = menu;
+  activeCleanup = cleanup;
 
-  // Dismiss on outside click
-  const onOutsideClick = (e) => {
-    if (!menu.contains(e.target)) {
-      removeBoardContextMenu();
-      document.removeEventListener('mousedown', onOutsideClick);
-      document.removeEventListener('keydown', onEscape);
-    }
-  };
-
-  // Dismiss on Escape
-  const onEscape = (e) => {
-    if (e.key === 'Escape') {
-      removeBoardContextMenu();
-      document.removeEventListener('mousedown', onOutsideClick);
-      document.removeEventListener('keydown', onEscape);
-    }
-  };
-
-  document.addEventListener('mousedown', onOutsideClick);
-  document.addEventListener('keydown', onEscape);
+  document.addEventListener('mousedown', onOutsideClick, true);
+  document.addEventListener('keydown', onEscape, true);
 }
 
 function renderBoardsList() {
