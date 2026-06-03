@@ -13,6 +13,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "jspdf": "^4.2.1",
     "lib0": "^0.2.117",
     "partykit": "^0.0.115",
     "partysocket": "^1.1.10",

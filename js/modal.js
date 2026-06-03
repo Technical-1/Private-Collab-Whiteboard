@@ -322,93 +322,38 @@ export function showPasswordModal(title, description = '', isChange = false) {
   });
 }
 
-
 /**
- * Show extract text modal with tabs for different groupings
- * @param {Array} texts - Array of text objects with {x, y, text, user, color}
+ * Show a save-as modal with a board image preview and PNG / PDF download options.
+ * @param {string} dataUrl - PNG data URL produced from the whiteboard canvas
+ * @returns {Promise<'png'|'pdf'|null>} Resolves with the user's choice, or null on dismiss.
  */
-export function showExtractTextModal(texts) {
+export function showSaveModal(dataUrl) {
   return new Promise((resolve) => {
     currentResolve = resolve;
 
-    // Generate text grouped by user
-    const userGroups = texts.reduce((groups, text) => {
-      if (!groups[text.user]) groups[text.user] = [];
-      groups[text.user].push(text.text);
-      return groups;
-    }, {});
-
-    const byUserOutput = Object.keys(userGroups).map(user =>
-      `${user}:\n${userGroups[user].join('\n')}`
-    ).join('\n\n');
-
-    // Generate text sorted by position
-    const sortedTexts = [...texts].sort((a, b) => {
-      if (Math.abs(a.y - b.y) < 20) return a.x - b.x; // Same line threshold
-      return a.y - b.y;
-    });
-    const byPositionOutput = sortedTexts.map(t => t.text).join('\n');
-
+    // Build body with a placeholder img — src set via DOM property after showModal
+    // so the data: URL is never interpolated into innerHTML.
     const bodyHTML = `
-      <div class="extract-text-modal">
-        <div class="extract-tabs">
-          <button class="extract-tab active" data-tab="user">By User</button>
-          <button class="extract-tab" data-tab="position">By Position</button>
-        </div>
-        <div class="extract-tab-content active" data-content="user">
-          <textarea class="extract-textarea" readonly>${escapeHtml(byUserOutput)}</textarea>
-        </div>
-        <div class="extract-tab-content" data-content="position">
-          <textarea class="extract-textarea" readonly>${escapeHtml(byPositionOutput)}</textarea>
-        </div>
+      <div class="save-preview-wrapper">
+        <img class="save-preview-img" alt="Board preview">
       </div>
     `;
 
     const actions = `
       <button class="modal-btn modal-btn-secondary" id="modal-close">Close</button>
-      <button class="modal-btn modal-btn-primary" id="modal-copy">Copy to Clipboard</button>
+      <button class="modal-btn modal-btn-secondary" id="save-pdf">Save as PDF</button>
+      <button class="modal-btn modal-btn-primary" id="save-png">Save as PNG</button>
     `;
 
-    showModal('Extracted Text', `Found ${texts.length} text item${texts.length !== 1 ? 's' : ''}`, bodyHTML, actions);
+    showModal('Save Board', '', bodyHTML, actions);
 
-    // Wire up tab switching
-    const tabs = modalContainer.querySelectorAll('.extract-tab');
-    const contents = modalContainer.querySelectorAll('.extract-tab-content');
+    // Set img src via DOM property — never via innerHTML attribute interpolation.
+    const previewImg = modalContainer.querySelector('.save-preview-img');
+    previewImg.src = dataUrl;
 
-    tabs.forEach(tab => {
-      tab.addEventListener('click', () => {
-        const tabName = tab.dataset.tab;
-
-        // Update active tab
-        tabs.forEach(t => t.classList.remove('active'));
-        tab.classList.add('active');
-
-        // Update active content
-        contents.forEach(c => {
-          c.classList.toggle('active', c.dataset.content === tabName);
-        });
-      });
-    });
-
-    // Wire up buttons
-    const closeBtn = modalContainer.querySelector('#modal-close');
-    const copyBtn = modalContainer.querySelector('#modal-copy');
-
-    closeBtn.onclick = () => {
-      closeModal(null);
-    };
-
-    copyBtn.onclick = () => {
-      // Get the currently visible textarea
-      const activeContent = modalContainer.querySelector('.extract-tab-content.active textarea');
-      navigator.clipboard.writeText(activeContent.value);
-
-      // Show copied feedback
-      copyBtn.textContent = 'Copied!';
-      setTimeout(() => {
-        copyBtn.textContent = 'Copy to Clipboard';
-      }, 2000);
-    };
+    modalContainer.querySelector('#modal-close').onclick = () => closeModal(null);
+    modalContainer.querySelector('#save-png').onclick = () => closeModal('png');
+    modalContainer.querySelector('#save-pdf').onclick = () => closeModal('pdf');
   });
 }
 

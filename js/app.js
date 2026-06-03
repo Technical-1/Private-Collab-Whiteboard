@@ -1,3 +1,4 @@
+import { jsPDF } from 'jspdf';
 import { initializeYjs, rotateRoom } from './yjs-setup.js';
 import {
   initializeAwareness,
@@ -6,7 +7,7 @@ import {
   changeUserColor,
   getLocalUserColor
 } from './awareness.js';
-import { setupDrawing, subscribeToBoard, getTexts, getCanvas, screenToWorld, getViewport, panBy, setZoom, setReadOnlyMode, cleanup as cleanupDrawing, deleteSelectedShapes, copySelectedShapes, pasteShapes, duplicateSelectedShapes, getFitBounds } from './drawing.js';
+import { setupDrawing, subscribeToBoard, getCanvas, screenToWorld, getViewport, panBy, setZoom, setReadOnlyMode, cleanup as cleanupDrawing, deleteSelectedShapes, copySelectedShapes, pasteShapes, duplicateSelectedShapes, getFitBounds } from './drawing.js';
 import { setupBoardManager, setBoardsContainer } from './boards.js';
 import {
   getRoomIdFromUrl,
@@ -26,7 +27,7 @@ import {
   showInviteModal,
   showPasswordModal,
   showKeyboardShortcuts,
-  showExtractTextModal
+  showSaveModal
 } from './modal.js';
 import { shouldDeleteSelection } from './keyboard-intent.js';
 import {
@@ -327,20 +328,8 @@ async function main() {
     }
   };
 
-  // Wire up text extraction
-  document.getElementById('extract-text').onclick = async () => {
-    const texts = getTexts();
-
-    if (texts.length === 0) {
-      await showAlert('No Text Found', 'There is no text on this board to extract.');
-      return;
-    }
-
-    await showExtractTextModal(texts);
-  };
-
-  // Wire up save as image
-  document.getElementById('save-image').onclick = () => {
+  // Wire up save as image — opens preview modal with PNG / PDF options
+  document.getElementById('save-image').onclick = async () => {
     const canvas = getCanvas();
     const tempCanvas = document.createElement('canvas');
     tempCanvas.width = canvas.width;
@@ -351,10 +340,26 @@ async function main() {
     tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
     tempCtx.drawImage(canvas, 0, 0);
 
-    const link = document.createElement('a');
-    link.download = 'whiteboard.png';
-    link.href = tempCanvas.toDataURL();
-    link.click();
+    const dataUrl = tempCanvas.toDataURL('image/png');
+    const choice = await showSaveModal(dataUrl);
+
+    if (choice === 'png') {
+      const link = document.createElement('a');
+      link.download = 'whiteboard.png';
+      link.href = dataUrl;
+      link.click();
+    } else if (choice === 'pdf') {
+      const w = canvas.width;
+      const h = canvas.height;
+      const pdf = new jsPDF({
+        orientation: w >= h ? 'landscape' : 'portrait',
+        unit: 'px',
+        format: [w, h]
+      });
+      pdf.addImage(dataUrl, 'PNG', 0, 0, w, h);
+      pdf.save('whiteboard.pdf');
+    }
+    // choice === null → user dismissed, do nothing
   };
 
   // Add invite button functionality (if exists)

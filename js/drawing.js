@@ -3206,32 +3206,6 @@ function drawFreehand(points, color, sw) {
 }
 
 /**
- * Get all text items from the current board
- * Used for text extraction feature
- * @returns {Array<{x: number, y: number, text: string, user: string, color: string}>}
- */
-export function getTexts() {
-  const boardName = getCurrentBoard();
-  const board = boards.get(boardName);
-  if (!board) return [];
-
-  const texts = [];
-  board.forEach(item => {
-    if (item.tool === 'text') {
-      texts.push({
-        x: item.x,
-        y: item.y,
-        text: item.text,
-        user: item.user,
-        color: item.color
-      });
-    }
-  });
-
-  return texts;
-}
-
-/**
  * Get the canvas element for external use (e.g., save as image)
  * @returns {HTMLCanvasElement}
  */
