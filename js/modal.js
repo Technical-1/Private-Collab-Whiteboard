@@ -46,10 +46,19 @@ export function initModals() {
 }
 
 let currentResolve = null;
+// Optional teardown run on EVERY close path (backdrop / X / Escape / buttons).
+// A modal that registers window-level listeners sets this so they can't leak
+// when the user dismisses via backdrop or Escape rather than an action button.
+let currentCleanup = null;
 
 function closeModal(result = null) {
   const modal = modalContainer.querySelector('.app-modal');
   modal.classList.remove('active');
+
+  if (currentCleanup) {
+    try { currentCleanup(); } catch (e) { console.error('Modal cleanup failed:', e); }
+    currentCleanup = null;
+  }
 
   if (currentResolve) {
     currentResolve(result);
@@ -60,6 +69,8 @@ function closeModal(result = null) {
 
 function showModal(title, description, bodyHTML, actions) {
   initModals();
+  // Each modal starts with no teardown registered; the opener sets one if needed.
+  currentCleanup = null;
 
   const modal = modalContainer.querySelector('.app-modal');
   const titleEl = modalContainer.querySelector('#modal-title');
@@ -166,7 +177,7 @@ export function showAlert(title, description = '') {
 }
 
 // Custom modal for inviting users with role selection
-export function showInviteModal(currentLink, isEncrypted, includePassword) {
+export function showInviteModal(currentLink, isEncrypted) {
   return new Promise((resolve) => {
     currentResolve = resolve;
 
@@ -223,16 +234,12 @@ export function showInviteModal(currentLink, isEncrypted, includePassword) {
     const cancelBtn = modalContainer.querySelector('#modal-cancel');
     const linkInput = modalContainer.querySelector('#modal-share-link');
     const permissionRadios = modalContainer.querySelectorAll('input[name="permission"]');
-    const includePasswordCheck = modalContainer.querySelector('#modal-include-password');
 
-    // Function to update the link based on selections
+    // Function to update the link based on the selected permission.
     const updateLink = () => {
       const permission = modalContainer.querySelector('input[name="permission"]:checked').value;
-      const includePass = includePasswordCheck?.checked || false;
-
-      // Dispatch event to get updated link
       const event = new CustomEvent('update-invite-link', {
-        detail: { permission, includePassword: includePass }
+        detail: { permission },
       });
       window.dispatchEvent(event);
     };
@@ -240,16 +247,14 @@ export function showInviteModal(currentLink, isEncrypted, includePassword) {
     permissionRadios.forEach(radio => {
       radio.addEventListener('change', updateLink);
     });
-
-    if (includePasswordCheck) {
-      includePasswordCheck.addEventListener('change', updateLink);
-    }
-
     // Listen for link updates
     const linkUpdateHandler = (e) => {
       linkInput.value = e.detail.link;
     };
     window.addEventListener('invite-link-updated', linkUpdateHandler);
+    // Remove the window listener on ANY close path (backdrop, X, Escape, or
+    // either button) — closeModal runs this teardown.
+    currentCleanup = () => window.removeEventListener('invite-link-updated', linkUpdateHandler);
 
     const copyToClipboard = () => {
       navigator.clipboard.writeText(linkInput.value);
@@ -273,13 +278,11 @@ export function showInviteModal(currentLink, isEncrypted, includePassword) {
     copyAndCloseBtn.onclick = () => {
       copyToClipboard();
       const permission = modalContainer.querySelector('input[name="permission"]:checked').value;
-      window.removeEventListener('invite-link-updated', linkUpdateHandler);
-      closeModal({ copied: true, permission });
+      closeModal({ copied: true, permission }); // currentCleanup removes the listener
     };
 
     cancelBtn.onclick = () => {
-      window.removeEventListener('invite-link-updated', linkUpdateHandler);
-      closeModal(null);
+      closeModal(null); // currentCleanup removes the listener
     };
   });
 }

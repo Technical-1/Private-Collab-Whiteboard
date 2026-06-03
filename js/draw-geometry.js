@@ -49,3 +49,41 @@ export function dashPattern(style) {
   if (style === 'dotted') return [2, 6];
   return [];
 }
+
+/**
+ * Bounding box of a text shape from its already-measured pixel width.
+ * @param {{x:number,y:number,fontSize?:number}} shape
+ * @param {number} textWidth - result of ctx.measureText(shape.text||'').width
+ *   measured with ctx.font ALREADY set to the shape's font (size + family).
+ * @returns {{x:number,y:number,width:number,height:number}}
+ */
+// Text is drawn on the alphabetic baseline at (x, y), so the box top is y - fontSize.
+// Shared by getShapeBounds and hitTestShape so the two cannot drift (a past bug:
+// hit-testing measured width with a stale ctx.font because only one call site
+// set the font).
+export function textBounds(shape, textWidth) {
+  const fs = shape.fontSize || 20;
+  return { x: shape.x, y: shape.y - fs, width: textWidth, height: fs };
+}
+
+// True if a freshly-drawn shape is too small to keep (a click with no drag would
+// otherwise commit an invisible 0-size shape into the CRDT). `dims` carries the
+// drag delta {dx,dy} for bbox/segment tools or {radius} for circles.
+export function isDegenerateShape(tool, dims, minSize = 2) {
+  if (tool === 'circle') return (dims.radius || 0) < minSize;
+  if (tool === 'line' || tool === 'arrow') {
+    return Math.hypot(dims.dx || 0, dims.dy || 0) < minSize;
+  }
+  // rect / diamond / triangle / ellipse: degenerate only if BOTH dims are tiny
+  // (a thin tall/wide box is still a legitimate shape).
+  return Math.abs(dims.dx || 0) < minSize && Math.abs(dims.dy || 0) < minSize;
+}
+
+// One pass over a board's items to an id->shape Map, so per-shape lookups during
+// a redraw are O(1) instead of O(n) board.toArray() scans (connectors resolve two
+// endpoints each, which otherwise makes a repaint O(shapes * connectors)).
+export function buildShapeIndex(items) {
+  const m = new Map();
+  for (const s of items) if (s && s.id) m.set(s.id, s);
+  return m;
+}

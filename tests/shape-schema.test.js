@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { sanitizeShape } from '../js/shape-schema.js';
+import { sanitizeShape, clampPoints, safeStrokeWidth, MAX_SHAPE_POINTS } from '../js/shape-schema.js';
 
 describe('sanitizeShape', () => {
   it('returns null for non-objects', () => {
@@ -69,4 +69,28 @@ describe('sanitizeShape — connector', () => {
     expect(clean.fromAnchor).toBe('e');
     expect(clean.toAnchor).toBe('w');
   });
+});
+
+describe('clampPoints', () => {
+  it('returns the array unchanged when under the cap', () => {
+    const pts = [{ x: 0, y: 0 }, { x: 1, y: 1 }];
+    expect(clampPoints(pts)).toBe(pts); // same reference, no copy
+  });
+  it('slices to the cap when over it', () => {
+    const big = Array.from({ length: MAX_SHAPE_POINTS + 100 }, (_, i) => ({ x: i, y: i }));
+    const out = clampPoints(big);
+    expect(out).toHaveLength(MAX_SHAPE_POINTS);
+    expect(out[0]).toEqual({ x: 0, y: 0 }); // keeps the head
+  });
+  it('returns [] for non-arrays', () => {
+    expect(clampPoints(undefined)).toEqual([]);
+    expect(clampPoints(null)).toEqual([]);
+  });
+});
+
+describe('safeStrokeWidth', () => {
+  it('passes through a normal width', () => expect(safeStrokeWidth(5)).toBe(5));
+  it('falls back to 2 for non-numbers', () => expect(safeStrokeWidth('NaN')).toBe(2));
+  it('clamps absurd widths to the max', () => expect(safeStrokeWidth(1e9)).toBe(200));
+  it('clamps negatives to 0', () => expect(safeStrokeWidth(-5)).toBe(0));
 });

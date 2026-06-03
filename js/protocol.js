@@ -9,6 +9,7 @@ export const MSG = {
   SNAPSHOT_REQUEST: 2,
   AWARENESS: 3,
   ROTATE: 4,
+  PRESENCE_PROBE: 5, // plaintext { enc:boolean } beacon; the ONLY frame left unencrypted in capability rooms
 };
 
 /**

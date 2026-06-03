@@ -1,7 +1,7 @@
 import * as Y from 'yjs';
 import { generateId, safeColor, safeNumber, safeToolName } from './utils.js';
-import { sanitizeShape } from './shape-schema.js';
-import { arrowHeadPoints, polygonPoints, pointInPolygon, dashPattern } from './draw-geometry.js';
+import { sanitizeShape, clampPoints, safeStrokeWidth } from './shape-schema.js';
+import { arrowHeadPoints, polygonPoints, pointInPolygon, dashPattern, textBounds, isDegenerateShape, buildShapeIndex } from './draw-geometry.js';
 import { wrapText } from './text-wrap.js';
 import {
   updateCursorPosition,
@@ -123,6 +123,10 @@ let currentBoardObserver = null;
 // the other. We must re-subscribe to the live instance or remote edits stop
 // triggering redraws even though the document itself syncs fine.
 let observedBoardArray = null;
+
+// Non-null ONLY during a synchronous redrawCanvas pass. findShapeById prefers it
+// to avoid O(n) board.toArray() scans while resolving connector endpoints.
+let shapeIndex = null;
 
 // Viewport state for infinite canvas
 let viewport = {
@@ -611,6 +615,16 @@ function handleMouseUp(e) {
     return;
   }
 
+  // Drop click-without-drag phantoms before they reach the CRDT.
+  if (['line', 'arrow', 'rect', 'diamond', 'triangle', 'ellipse', 'circle'].includes(currentTool)) {
+    // radius === hypot(dx,dy); isDegenerateShape only reads it for the circle case.
+    const radius = Math.sqrt(Math.pow(x - startX, 2) + Math.pow(y - startY, 2));
+    if (isDegenerateShape(currentTool, { dx: x - startX, dy: y - startY, radius })) {
+      redrawCanvas(); // clear the in-progress preview
+      return;
+    }
+  }
+
   // Handle shape tools
   if (currentTool === 'line') {
     addDrawing({
@@ -1049,11 +1063,19 @@ export function deleteSelectedShapes() {
   if (selectedIds.size === 0) return;
   if (!canMutate()) return;
 
-  // Copy the set since deleteShape will modify it
-  const idsToDelete = [...selectedIds];
-  idsToDelete.forEach(id => {
-    deleteShape(id);
-  });
+  // Skip locked shapes up front so the batch is a single clean transaction and
+  // deleteShape never fires its locked-shape alert mid-transaction (which would
+  // commit a partial batch).
+  const idsToDelete = [...selectedIds].filter(id => !findShapeById(id)?.locked);
+  if (idsToDelete.length === 0) return;
+  const board = boards.get(getCurrentBoard());
+  // board.doc is present in normal operation (the array is observed/inserted);
+  // the else branch is defensive for a not-yet-inserted Y.Array.
+  if (board?.doc) {
+    board.doc.transact(() => idsToDelete.forEach(id => deleteShape(id)));
+  } else {
+    idsToDelete.forEach(id => deleteShape(id));
+  }
   redrawCanvas();
 }
 
@@ -1101,36 +1123,31 @@ export function pasteShapes(offsetX = 20, offsetY = 20) {
   });
 
   let pasted = 0;
-  prepared.forEach(newShape => {
-    // Offset position
-    if (newShape.x !== undefined) newShape.x += offsetX;
-    if (newShape.y !== undefined) newShape.y += offsetY;
-    if (newShape.startX !== undefined) newShape.startX += offsetX;
-    if (newShape.startY !== undefined) newShape.startY += offsetY;
-    if (newShape.endX !== undefined) newShape.endX += offsetX;
-    if (newShape.endY !== undefined) newShape.endY += offsetY;
-    if (newShape.points) {
-      newShape.points = newShape.points.map(p => ({
-        x: p.x + offsetX,
-        y: p.y + offsetY
-      }));
-    }
-
-    // Connectors bind by id. Re-point to the pasted endpoint copies; if an endpoint
-    // wasn't part of the copied set, drop the connector rather than create a
-    // confusing duplicate bound to (and overlapping) the originals.
-    if (newShape.tool === 'connector') {
-      const from = idMap.get(newShape.fromId);
-      const to = idMap.get(newShape.toId);
-      if (!from || !to) return;
-      newShape.fromId = from;
-      newShape.toId = to;
-    }
-
-    board.push([newShape]);
-    selectedIds.add(newShape.id);
-    pasted++;
-  });
+  const doPaste = () => {
+    prepared.forEach(newShape => {
+      if (newShape.x !== undefined) newShape.x += offsetX;
+      if (newShape.y !== undefined) newShape.y += offsetY;
+      if (newShape.startX !== undefined) newShape.startX += offsetX;
+      if (newShape.startY !== undefined) newShape.startY += offsetY;
+      if (newShape.endX !== undefined) newShape.endX += offsetX;
+      if (newShape.endY !== undefined) newShape.endY += offsetY;
+      if (newShape.points) {
+        newShape.points = newShape.points.map(p => ({ x: p.x + offsetX, y: p.y + offsetY }));
+      }
+      if (newShape.tool === 'connector') {
+        const from = idMap.get(newShape.fromId);
+        const to = idMap.get(newShape.toId);
+        if (!from || !to) return;
+        newShape.fromId = from;
+        newShape.toId = to;
+      }
+      board.push([newShape]);
+      selectedIds.add(newShape.id);
+      pasted++;
+    });
+  };
+  if (board.doc) board.doc.transact(doPaste);
+  else doPaste();
 
   redrawCanvas();
   return pasted;
@@ -1890,7 +1907,7 @@ function moveShape(shapeId, dx, dy) {
     updated.y += dy;
   } else if (shape.tool === 'freehand' || shape.tool === 'highlight' || shape.tool === 'eraser') {
     if (updated.points) {
-      updated.points = updated.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
+      updated.points = clampPoints(updated.points).map(p => ({ x: p.x + dx, y: p.y + dy }));
     }
   } else if (shape.tool === 'arrow') {
     updated.startX += dx;
@@ -2092,10 +2109,10 @@ function findShapeAtPoint(x, y) {
 }
 
 function findShapeById(id) {
+  if (shapeIndex) return shapeIndex.get(id) || null;
   const boardName = getCurrentBoard();
   const board = boards.get(boardName);
   if (!board) return null;
-
   const items = board.toArray();
   return items.find(item => item.id === id) || null;
 }
@@ -2110,7 +2127,7 @@ function findShapeIndex(id) {
 }
 
 function hitTestShape(x, y, shape, threshold = 8) {
-  const sw = (shape.strokeWidth || 2) / 2 + threshold;
+  const sw = safeStrokeWidth(shape.strokeWidth) / 2 + threshold;
 
   switch (shape.tool) {
     case 'line':
@@ -2140,19 +2157,22 @@ function hitTestShape(x, y, shape, threshold = 8) {
     }
 
     case 'text': {
-      const textWidth = ctx.measureText(shape.text).width;
-      const fs = shape.fontSize || 20;
-      return x >= shape.x && x <= shape.x + textWidth &&
-             y >= shape.y - fs && y <= shape.y;
+      // Must set ctx.font before measuring — the context retains the font from
+      // the previously drawn shape otherwise (this was the selection bug).
+      ctx.font = `${shape.fontSize || 20}px ${shape.fontFamily || 'Arial'}`;
+      const textWidth = ctx.measureText(shape.text || '').width;
+      const b = textBounds(shape, textWidth);
+      return x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + b.height;
     }
 
     case 'highlight':
     case 'freehand':
     case 'eraser': {
-      if (!shape.points || shape.points.length < 2) return false;
-      for (let i = 1; i < shape.points.length; i++) {
-        const p1 = shape.points[i - 1];
-        const p2 = shape.points[i];
+      const pts = clampPoints(shape.points);
+      if (pts.length < 2) return false;
+      for (let i = 1; i < pts.length; i++) {
+        const p1 = pts[i - 1];
+        const p2 = pts[i];
         if (pointToLineDistance(x, y, p1.x, p1.y, p2.x, p2.y) < sw) {
           return true;
         }
@@ -2264,14 +2284,8 @@ export function getShapeBounds(shape) {
 
     case 'text': {
       ctx.font = `${shape.fontSize || 20}px ${shape.fontFamily || 'Arial'}`;
-      const textWidth = ctx.measureText(shape.text).width;
-      const fs = shape.fontSize || 20;
-      return {
-        x: shape.x,
-        y: shape.y - fs,
-        width: textWidth,
-        height: fs
-      };
+      const textWidth = ctx.measureText(shape.text || '').width;
+      return textBounds(shape, textWidth);
     }
 
     case 'highlight':
@@ -2281,7 +2295,7 @@ export function getShapeBounds(shape) {
         return { x: 0, y: 0, width: 0, height: 0 };
       }
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      shape.points.forEach(p => {
+      clampPoints(shape.points).forEach(p => {
         minX = Math.min(minX, p.x);
         minY = Math.min(minY, p.y);
         maxX = Math.max(maxX, p.x);
@@ -2429,56 +2443,44 @@ function redrawCanvas() {
 
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  // Apply viewport transform for world-space rendering
-  ctx.save();
-  ctx.scale(viewport.zoom, viewport.zoom);
-  ctx.translate(-viewport.x, -viewport.y);
+  const items = board.toArray();
+  shapeIndex = buildShapeIndex(items);
+  try {
+    // Apply viewport transform for world-space rendering
+    ctx.save();
+    ctx.scale(viewport.zoom, viewport.zoom);
+    ctx.translate(-viewport.x, -viewport.y);
 
-  let hasOverlay = false;
+    let hasOverlay = false;
 
-  board.forEach((item) => {
-    // Skip the committed shape being edited (its live state is drawn in
-    // drawLocalTextPreview). Applies to both text and sticky notes.
-    if (editingTextId === item.id && (item.tool === 'text' || item.tool === 'sticky')) return;
+    items.forEach((item) => {
+      if (editingTextId === item.id && (item.tool === 'text' || item.tool === 'sticky')) return;
+      drawShape(item);
+      const isSelected = selectedIds.has(item.id);
+      const isHovered = item.id === hoveredId && !isSelected;
+      if (isSelected || isHovered) {
+        drawShapeOverlayWorld(item, isSelected);
+        hasOverlay = true;
+      }
+    });
 
-    drawShape(item);
+    drawRemoteDrawings();
+    drawLasers();
+    drawLocalTextPreview();
 
-    // Draw selection/hover overlay (in world space)
-    const isSelected = selectedIds.has(item.id);
-    const isHovered = item.id === hoveredId && !isSelected;
+    ctx.restore();
 
-    if (isSelected || isHovered) {
-      drawShapeOverlayWorld(item, isSelected);
-      hasOverlay = true;
-    }
-  });
+    const firstSelectedId = selectedIds.size > 0 ? selectedIds.values().next().value : null;
+    items.forEach((item) => {
+      const isSelected = selectedIds.has(item.id);
+      const isHovered = item.id === hoveredId && !isSelected;
+      const showControls = (isSelected && item.id === firstSelectedId) || isHovered;
+      if (showControls) showShapeControlsScreen(item, isSelected);
+    });
 
-  // Draw remote users' in-progress drawings (live preview)
-  drawRemoteDrawings();
-
-  // Draw laser pointers (local + remote, ephemeral, awareness-only)
-  drawLasers();
-
-  // Draw local text being created (live preview)
-  drawLocalTextPreview();
-
-  ctx.restore();
-
-  // Draw UI controls in screen space (after restoring transform)
-  // Only show controls for the first selected shape (or hovered shape)
-  const firstSelectedId = selectedIds.size > 0 ? selectedIds.values().next().value : null;
-  board.forEach((item) => {
-    const isSelected = selectedIds.has(item.id);
-    const isHovered = item.id === hoveredId && !isSelected;
-    const showControls = (isSelected && item.id === firstSelectedId) || isHovered;
-    if (showControls) {
-      showShapeControlsScreen(item, isSelected);
-    }
-  });
-
-  // Hide controls if no shape is selected or hovered
-  if (!hasOverlay) {
-    hideShapeControls();
+    if (!hasOverlay) hideShapeControls();
+  } finally {
+    shapeIndex = null; // index is only valid within this synchronous pass
   }
 }
 
@@ -2489,14 +2491,14 @@ function drawRemoteDrawings() {
   remoteDrawings.forEach(drawing => {
     ctx.save();
     ctx.globalAlpha = 0.6; // Semi-transparent to show it's in-progress
-    ctx.lineWidth = drawing.strokeWidth || 2;
+    ctx.lineWidth = safeStrokeWidth(drawing.strokeWidth);
 
     if (drawing.tool === 'highlight') {
       ctx.globalAlpha = 0.35;
-      drawFreehand(drawing.points, drawing.color, drawing.strokeWidth || 2);
+      drawFreehand(drawing.points, drawing.color, safeStrokeWidth(drawing.strokeWidth));
     } else if (drawing.tool === 'freehand' || drawing.tool === 'eraser') {
       const color = drawing.tool === 'eraser' ? '#FFFFFF' : drawing.color;
-      drawFreehand(drawing.points, color, drawing.strokeWidth || 2);
+      drawFreehand(drawing.points, color, safeStrokeWidth(drawing.strokeWidth));
     } else if (drawing.tool === 'line') {
       ctx.setLineDash(dashPattern(drawing.strokeStyle).map(d => d / viewport.zoom));
       drawLine(drawing.startX, drawing.startY, drawing.x, drawing.y, drawing.color);
@@ -2510,15 +2512,15 @@ function drawRemoteDrawings() {
       drawCircle(drawing.startX, drawing.startY, drawing.radius, drawing.color, drawing.fillColor);
       ctx.setLineDash([]);
     } else if (drawing.tool === 'arrow') {
-      drawArrow(drawing.startX, drawing.startY, drawing.x, drawing.y, drawing.color, drawing.strokeWidth || 2, drawing.strokeStyle, drawing.arrowHeads);
+      drawArrow(drawing.startX, drawing.startY, drawing.x, drawing.y, drawing.color, safeStrokeWidth(drawing.strokeWidth), drawing.strokeStyle, drawing.arrowHeads);
     } else if (drawing.tool === 'diamond' || drawing.tool === 'triangle') {
       const bx = Math.min(drawing.startX, drawing.startX + drawing.width);
       const by = Math.min(drawing.startY, drawing.startY + drawing.height);
-      drawPolygon(drawing.tool, bx, by, Math.abs(drawing.width), Math.abs(drawing.height), drawing.color, drawing.strokeWidth || 2, drawing.strokeStyle, drawing.fillColor);
+      drawPolygon(drawing.tool, bx, by, Math.abs(drawing.width), Math.abs(drawing.height), drawing.color, safeStrokeWidth(drawing.strokeWidth), drawing.strokeStyle, drawing.fillColor);
     } else if (drawing.tool === 'ellipse') {
       const bx = Math.min(drawing.startX, drawing.startX + drawing.width);
       const by = Math.min(drawing.startY, drawing.startY + drawing.height);
-      drawEllipseShape(bx, by, Math.abs(drawing.width), Math.abs(drawing.height), drawing.color, drawing.strokeWidth || 2, drawing.strokeStyle, drawing.fillColor);
+      drawEllipseShape(bx, by, Math.abs(drawing.width), Math.abs(drawing.height), drawing.color, safeStrokeWidth(drawing.strokeWidth), drawing.strokeStyle, drawing.fillColor);
     } else if (drawing.tool === 'text' && drawing.text) {
       drawText(drawing.x, drawing.y, drawing.text, drawing.color, drawing.fontSize, drawing.fontFamily);
     }
@@ -2622,7 +2624,7 @@ function drawLocalTextPreview() {
 function drawShape(item) {
   const tool = item.tool;
   const color = item.color;
-  const sw = item.strokeWidth || 2;
+  const sw = safeStrokeWidth(item.strokeWidth);
 
   ctx.lineWidth = sw;
 
@@ -2725,7 +2727,7 @@ function drawShapePreview(shape, dx, dy) {
   ctx.scale(viewport.zoom, viewport.zoom);
   ctx.translate(-viewport.x, -viewport.y);
   ctx.globalAlpha = 0.5;
-  ctx.lineWidth = shape.strokeWidth || 2;
+  ctx.lineWidth = safeStrokeWidth(shape.strokeWidth);
 
   if (shape.tool === 'line') {
     drawLine(shape.startX + dx, shape.startY + dy, shape.x + dx, shape.y + dy, shape.color);
@@ -2734,13 +2736,13 @@ function drawShapePreview(shape, dx, dy) {
   } else if (shape.tool === 'circle') {
     drawCircle(shape.startX + dx, shape.startY + dy, shape.radius, shape.color, shape.fillColor);
   } else if (shape.tool === 'arrow') {
-    drawArrow(shape.startX + dx, shape.startY + dy, shape.x + dx, shape.y + dy, shape.color, shape.strokeWidth || 2, shape.strokeStyle, shape.arrowHeads);
+    drawArrow(shape.startX + dx, shape.startY + dy, shape.x + dx, shape.y + dy, shape.color, safeStrokeWidth(shape.strokeWidth), shape.strokeStyle, shape.arrowHeads);
   } else if (shape.tool === 'diamond' || shape.tool === 'triangle') {
     const b = getShapeBounds(shape);
-    drawPolygon(shape.tool, b.x + dx, b.y + dy, b.width, b.height, shape.color, shape.strokeWidth || 2, shape.strokeStyle, shape.fillColor);
+    drawPolygon(shape.tool, b.x + dx, b.y + dy, b.width, b.height, shape.color, safeStrokeWidth(shape.strokeWidth), shape.strokeStyle, shape.fillColor);
   } else if (shape.tool === 'ellipse') {
     const b = getShapeBounds(shape);
-    drawEllipseShape(b.x + dx, b.y + dy, b.width, b.height, shape.color, shape.strokeWidth || 2, shape.strokeStyle, shape.fillColor);
+    drawEllipseShape(b.x + dx, b.y + dy, b.width, b.height, shape.color, safeStrokeWidth(shape.strokeWidth), shape.strokeStyle, shape.fillColor);
   } else if (shape.tool === 'text') {
     drawText(shape.x + dx, shape.y + dy, shape.text, shape.color, shape.fontSize, shape.fontFamily);
   } else if (shape.tool === 'sticky') {
@@ -2748,12 +2750,12 @@ function drawShapePreview(shape, dx, dy) {
     drawSticky(b.x + dx, b.y + dy, b.width, b.height, shape.fillColor, shape.text, shape.fontSize);
   } else if (shape.tool === 'highlight') {
     // The function's outer save/restore (below) scopes this globalAlpha override.
-    const movedPoints = shape.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
+    const movedPoints = clampPoints(shape.points).map(p => ({ x: p.x + dx, y: p.y + dy }));
     ctx.globalAlpha = 0.35;
-    drawFreehand(movedPoints, shape.color, shape.strokeWidth || 2);
+    drawFreehand(movedPoints, shape.color, safeStrokeWidth(shape.strokeWidth));
   } else if (shape.tool === 'freehand' || shape.tool === 'eraser') {
-    const movedPoints = shape.points.map(p => ({ x: p.x + dx, y: p.y + dy }));
-    drawFreehand(movedPoints, shape.color, shape.strokeWidth || 2);
+    const movedPoints = clampPoints(shape.points).map(p => ({ x: p.x + dx, y: p.y + dy }));
+    drawFreehand(movedPoints, shape.color, safeStrokeWidth(shape.strokeWidth));
   } else if (shape.tool === 'connector') {
     // A connector has no own coordinates; it's anchored to its endpoints. Draw it
     // at its resolved position. If a dragged endpoint is selected, offset that
@@ -2768,7 +2770,7 @@ function drawShapePreview(shape, dx, dy) {
         if (selectedIds.has(shape.fromId)) { p1.x += dragDX; p1.y += dragDY; }
         if (selectedIds.has(shape.toId)) { p2.x += dragDX; p2.y += dragDY; }
       }
-      drawArrow(p1.x, p1.y, p2.x, p2.y, shape.color, shape.strokeWidth || 2, shape.strokeStyle, shape.arrowHeads);
+      drawArrow(p1.x, p1.y, p2.x, p2.y, shape.color, safeStrokeWidth(shape.strokeWidth), shape.strokeStyle, shape.arrowHeads);
     }
   }
 
@@ -2954,7 +2956,8 @@ function drawText(x, y, text, color, size = 20, family = 'Arial') {
 }
 
 function drawFreehand(points, color, sw) {
-  if (!points || points.length < 2) return;
+  points = clampPoints(points);
+  if (points.length < 2) return;
 
   ctx.strokeStyle = color;
   ctx.lineWidth = sw;

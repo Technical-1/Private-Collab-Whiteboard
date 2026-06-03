@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { arrowHeadPoints, polygonPoints, pointInPolygon, dashPattern } from '../js/draw-geometry.js';
+import { arrowHeadPoints, polygonPoints, pointInPolygon, dashPattern, textBounds, isDegenerateShape, buildShapeIndex } from '../js/draw-geometry.js';
 
 describe('arrowHeadPoints', () => {
   it('returns two barb points behind the tip for a rightward arrow', () => {
@@ -53,5 +53,56 @@ describe('dashPattern', () => {
   it('unknown/undefined → solid', () => {
     expect(dashPattern(undefined)).toEqual([]);
     expect(dashPattern('zigzag')).toEqual([]);
+  });
+});
+
+describe('textBounds', () => {
+  it('anchors the box at the text baseline (y is top = y - fontSize)', () => {
+    const b = textBounds({ x: 10, y: 100, fontSize: 20 }, 80);
+    expect(b).toEqual({ x: 10, y: 80, width: 80, height: 20 });
+  });
+  it('defaults fontSize to 20 when missing', () => {
+    const b = textBounds({ x: 0, y: 50 }, 40);
+    expect(b).toEqual({ x: 0, y: 30, width: 40, height: 20 });
+  });
+});
+
+describe('isDegenerateShape', () => {
+  it('flags a zero-drag rect/diamond/triangle/ellipse', () => {
+    for (const t of ['rect', 'diamond', 'triangle', 'ellipse']) {
+      expect(isDegenerateShape(t, { dx: 0, dy: 0 })).toBe(true);
+      expect(isDegenerateShape(t, { dx: 1, dy: 1 })).toBe(true);   // below 2px min
+      expect(isDegenerateShape(t, { dx: 50, dy: 0 })).toBe(false); // thin but real
+    }
+  });
+  it('flags a zero-length line/arrow', () => {
+    expect(isDegenerateShape('line', { dx: 1, dy: 1 })).toBe(true);
+    expect(isDegenerateShape('arrow', { dx: 10, dy: 0 })).toBe(false);
+  });
+  it('flags a zero-radius circle', () => {
+    expect(isDegenerateShape('circle', { radius: 1 })).toBe(true);
+    expect(isDegenerateShape('circle', { radius: 30 })).toBe(false);
+  });
+  it('treats NaN dims as degenerate (|| 0 fallback)', () => {
+    expect(isDegenerateShape('circle', { radius: NaN })).toBe(true);
+    expect(isDegenerateShape('rect', { dx: NaN, dy: NaN })).toBe(true);
+  });
+});
+
+describe('buildShapeIndex', () => {
+  it('maps id -> shape and ignores entries without an id', () => {
+    const items = [{ id: 'a', tool: 'rect' }, { tool: 'noid' }, { id: 'b', tool: 'line' }];
+    const idx = buildShapeIndex(items);
+    expect(idx.get('a')).toEqual({ id: 'a', tool: 'rect' });
+    expect(idx.get('b').tool).toBe('line');
+    expect(idx.size).toBe(2);
+  });
+  it('last write wins on duplicate ids', () => {
+    const idx = buildShapeIndex([{ id: 'x', n: 1 }, { id: 'x', n: 2 }]);
+    expect(idx.get('x').n).toBe(2);
+  });
+  it('returns references to the original shape objects (not copies)', () => {
+    const items = [{ id: 'x', n: 1 }, { id: 'x', n: 2 }];
+    expect(buildShapeIndex(items).get('x')).toBe(items[1]);
   });
 });

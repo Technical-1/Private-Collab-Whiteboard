@@ -48,6 +48,8 @@ export class SyncProvider {
     this.wsUnsuccessfulReconnects = 0;
     this.maxBackoffTime = 2500;
     this._destroyed = false; // once destroyed, never reconnect
+    this._mismatchSignaled = false; // fire room-access-mismatch at most once
+    this._echoed = false; // one-shot guard so we echo our presence probe at most once per connection
 
     // Callbacks. onMessage/onConnect are PUBLIC settable properties: the signing
     // layer (SignedDocSync) assigns them after construction, so they must not be
@@ -145,7 +147,10 @@ export class SyncProvider {
     this._onStatus({ status: 'connected' });
 
     // Send our current awareness state
-    this._broadcastAwareness([this.doc.clientID]);
+    await this._broadcastAwareness([this.doc.clientID]);
+
+    // Announce our encryption status so cross-mode peers can detect a mismatch.
+    await this._broadcastPresenceProbe();
 
     // Let the signing layer (re)bootstrap now that the socket is OPEN.
     if (this.onConnect) this.onConnect();
@@ -158,26 +163,31 @@ export class SyncProvider {
       const type = data[0];
       let payload = data.slice(1);
 
-      if (type === MSG.AWARENESS) {
-        // Awareness is never encrypted/signed (ephemeral, cosmetic).
-        this._handleAwarenessMessage(payload);
+      // The presence probe is always plaintext (it is how a keyless visitor
+      // discovers an encrypted room), so handle it before any decryption.
+      if (type === MSG.PRESENCE_PROBE) {
+        this._handlePresenceProbe(payload);
         return;
       }
 
-      // All other types carry an AES-encrypted signed envelope.
+      // Everything else (including AWARENESS now) is AES-encrypted in capability
+      // rooms. Open rooms have no key, so this is a no-op there.
       if (this.isEncrypted && this.decrypt) {
         try {
           payload = await this.decrypt(payload, this.encryptionKey);
         } catch (err) {
-          // Drop the frame. In the capability model the password lives in the
-          // link, so an undecryptable frame is an incompatible peer (e.g. someone
-          // who opened the bare room URL, or a pre-rotation client) — NOT the
-          // local user's "wrong password". Surfacing it would wrongly nuke a
-          // working session, so we ignore it rather than emit decryption-failed.
+          // Undecryptable frame == incompatible peer (e.g. a keyless visitor's
+          // plaintext awareness, or a pre-rotation client). Drop it silently.
           console.debug('Dropping undecryptable frame from an incompatible peer');
           return;
         }
       }
+
+      if (type === MSG.AWARENESS) {
+        this._handleAwarenessMessage(payload);
+        return;
+      }
+
       if (this.onMessage) this.onMessage(type, payload);
     } catch (error) {
       console.error('Failed to process message:', error);
@@ -207,6 +217,7 @@ export class SyncProvider {
   _onClose() {
     this.wsconnected = false;
     this.wsconnecting = false;
+    this._echoed = false; // reset so a fresh connection can echo again
 
     if (this._destroyed) return; // destroyed: don't report status or reconnect
 
@@ -222,6 +233,43 @@ export class SyncProvider {
     setTimeout(() => this.connect(), backoff);
   }
 
+  /**
+   * Plaintext presence beacon. Carries only whether THIS client holds the room
+   * capability, so a keyless visitor to an encrypted room can detect the
+   * mismatch (their own awareness is plaintext, but encrypted peers' awareness
+   * no longer decodes for them). Never carries cursors/names/content.
+   */
+  async _broadcastPresenceProbe() {
+    const bytes = new TextEncoder().encode(JSON.stringify({ enc: this.isEncrypted }));
+    await this.send(MSG.PRESENCE_PROBE, bytes);
+  }
+
+  /**
+   * A peer announced its encryption status (plaintext probe).
+   *  - keyless client + peer is encrypted -> we opened a bare URL of a
+   *    password-protected room; signal the app once.
+   *  - encrypted client + peer is keyless -> echo our probe so the just-joined
+   *    keyless visitor learns we are here (relay does not replay). The keyless
+   *    side never echoes back, so this terminates.
+   */
+  _handlePresenceProbe(payload) {
+    let parsed;
+    try { parsed = JSON.parse(new TextDecoder().decode(payload)); } catch { return; }
+    if (!parsed || typeof parsed.enc !== 'boolean') return;
+
+    if (parsed.enc && !this.isEncrypted) {
+      if (this._mismatchSignaled) return;
+      this._mismatchSignaled = true;
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('room-access-mismatch'));
+      }
+    } else if (!parsed.enc && this.isEncrypted) {
+      if (this._echoed) return;
+      this._echoed = true;
+      this._broadcastPresenceProbe().catch((e) => console.error('presence probe echo failed:', e));
+    }
+  }
+
   async _broadcastAwareness(changedClients) {
     if (!this.wsconnected) return;
 
@@ -234,8 +282,9 @@ export class SyncProvider {
   }
 
   /**
-   * Send a typed message. Awareness messages are sent unencrypted; all other
-   * types are AES-encrypted when an encryptionKey is configured.
+   * Send a typed message. Only the plaintext presence beacon (PRESENCE_PROBE)
+   * stays unencrypted in capability rooms; all other types — including AWARENESS
+   * — are AES-encrypted when an encryptionKey is configured.
    * @param {number} type - Message type (use MSG constants from protocol.js)
    * @param {Uint8Array} payload
    */
@@ -243,7 +292,10 @@ export class SyncProvider {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) return;
     try {
       let finalPayload = payload;
-      if (type !== MSG.AWARENESS && this.isEncrypted && this.encrypt) {
+      // Only the plaintext presence beacon stays unencrypted in capability rooms.
+      // AWARENESS now rides the AES path so live cursors/laser/in-progress shapes
+      // and typed text are never exposed to the relay.
+      if (type !== MSG.PRESENCE_PROBE && this.isEncrypted && this.encrypt) {
         finalPayload = await this.encrypt(payload, this.encryptionKey);
       }
       const message = new Uint8Array(1 + finalPayload.length);

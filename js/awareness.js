@@ -7,23 +7,21 @@ let cursorsContainer = null;
 let localAwareness = null;
 let localUserId = null;
 let onAwarenessChange = null; // Callback for when awareness changes
-let localEncrypted = false; // whether this client holds the room capability
-let accessMismatchSignaled = false; // fire the "needs invite link" hint once
 
 // Throttle cursor updates to reduce network traffic
 let lastCursorUpdate = 0;
 
-export function initializeAwareness(awareness, userName, awarenessChangeCallback = null, encrypted = false) {
+export function initializeAwareness(awareness, userName, awarenessChangeCallback = null) {
   localAwareness = awareness;
   onAwarenessChange = awarenessChangeCallback;
-  localEncrypted = encrypted;
   const userId = generateUserId();
   localUserId = visibleId(userId);
   const color = assignColor(userId);
 
-  // Set local user state. `enc` advertises whether THIS client holds the room
-  // capability (encrypted). Awareness is unencrypted, so a keyless visitor to an
-  // encrypted room can detect the mismatch and prompt for the invite link.
+  // No `enc` flag here: access-mismatch detection rides the plaintext
+  // PRESENCE_PROBE in sync-provider, and awareness is AES-encrypted in capability
+  // rooms — so an `enc` field inside it would be unreadable by a keyless visitor
+  // anyway. Keeping it would be dead data.
   awareness.setLocalState({
     user: {
       id: localUserId,
@@ -33,7 +31,6 @@ export function initializeAwareness(awareness, userName, awarenessChangeCallback
       cursor: null, // Will be updated on mouse move
       currentDrawing: null, // In-progress drawing for live preview
       laser: null, // Ephemeral laser-pointer trail (awareness-only, never persisted)
-      enc: encrypted
     }
   });
 
@@ -41,7 +38,6 @@ export function initializeAwareness(awareness, userName, awarenessChangeCallback
   awareness.on('change', ({ added, updated, removed }) => {
     renderUsers(awareness);
     renderCursors(awareness);
-    detectAccessMismatch(awareness);
 
     // Only trigger redraw for remote changes (not our own updates)
     // This prevents the local drawing preview from being cleared
@@ -65,22 +61,6 @@ export function initializeAwareness(awareness, userName, awarenessChangeCallback
 // Get shortened visible ID (first 8 chars)
 function visibleId(fullId) {
   return fullId.substring(0, 8);
-}
-
-// If this client is NOT in the encrypted room (no capability) but a remote peer
-// advertises enc=true, it opened the bare URL of a password-protected room and
-// needs the invite link to read/edit. Signal the app once.
-function detectAccessMismatch(awareness) {
-  if (localEncrypted || accessMismatchSignaled) return;
-  const localClientId = awareness.clientID;
-  for (const [clientId, state] of awareness.getStates()) {
-    if (clientId === localClientId) continue;
-    if (state?.user?.enc === true) {
-      accessMismatchSignaled = true;
-      window.dispatchEvent(new CustomEvent('room-access-mismatch'));
-      return;
-    }
-  }
 }
 
 export function setUsersContainer(container) {

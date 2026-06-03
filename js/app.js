@@ -28,6 +28,7 @@ import {
   showKeyboardShortcuts,
   showExtractTextModal
 } from './modal.js';
+import { shouldDeleteSelection } from './keyboard-intent.js';
 import {
   initUndoManager,
   undo,
@@ -139,13 +140,12 @@ async function main() {
   });
 
   // Initialize user awareness with callback for live drawing updates.
-  // Pass isEncrypted so peers can detect a keyless visitor to an encrypted room.
   const { color } = initializeAwareness(awareness, userName, () => {
     // Redraw canvas when other users' awareness changes (for live drawing preview)
     if (drawingController) {
       drawingController.redraw();
     }
-  }, isEncrypted);
+  });
 
   // Set containers for rendering
   setUsersContainer(document.getElementById('users'));
@@ -356,7 +356,7 @@ async function main() {
   };
 
   // Wire up share link
-  const shareLink = getShareableLink(false);
+  const shareLink = getShareableLink();
   document.getElementById('share-link').value = shareLink;
 
   // Show/hide password controls based on encryption status
@@ -369,7 +369,7 @@ async function main() {
   // keys) is always embedded — a link without it would drop the recipient into a
   // different, open room. This is the quick "edit" link; use Invite for view-only.
   document.getElementById('copy-link').onclick = async () => {
-    const link = getShareableLink(true);
+    const link = getShareableLink();
     copyToClipboard(link);
 
     await showAlert('Link Copied', isEncrypted
@@ -381,18 +381,17 @@ async function main() {
   const inviteBtn = document.getElementById('invite-btn');
   if (inviteBtn) {
     inviteBtn.onclick = async () => {
-      const includePassword = document.getElementById('include-password')?.checked || false;
-      const link = getShareableLink(includePassword);
+      const link = getShareableLink();
 
-      // Listen for link update requests from the modal
+      // The modal asks for an updated link when the permission radio changes.
       const handleLinkUpdate = (e) => {
-        const { permission, includePassword: includePass } = e.detail;
-        const newLink = getShareableLink(includePass, permission);
+        const { permission } = e.detail;
+        const newLink = getShareableLink(permission);
         window.dispatchEvent(new CustomEvent('invite-link-updated', { detail: { link: newLink } }));
       };
       window.addEventListener('update-invite-link', handleLinkUpdate);
 
-      const result = await showInviteModal(link, isEncrypted, includePassword);
+      await showInviteModal(link, isEncrypted);
 
       window.removeEventListener('update-invite-link', handleLinkUpdate);
     };
@@ -837,10 +836,12 @@ function setupKeyboardShortcuts() {
       showKeyboardShortcuts();
     }
 
-    // Delete: Delete or Backspace key deletes selected shapes
+    // Delete: only consume the key when a deletion will actually occur, so an
+    // empty/ read-only Backspace is not swallowed.
     if (e.key === 'Delete' || e.key === 'Backspace') {
-      e.preventDefault();
-      if (!readOnly) {
+      const selectionCount = drawingController.getSelectedIds().size;
+      if (shouldDeleteSelection({ readOnly, selectionCount })) {
+        e.preventDefault();
         deleteSelectedShapes();
         drawingController.redraw();
       }
