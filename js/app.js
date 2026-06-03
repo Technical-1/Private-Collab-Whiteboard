@@ -309,6 +309,13 @@ async function main() {
     } else {
       loadToolSettings(currentToolName);
       updateOptionsVisibility(currentToolName);
+      // Restore the stroke-style button highlight to the current tool's default.
+      // toolSettings doesn't store strokeStyle, so fall back to 'solid' (the
+      // drawing module's default for new shapes).
+      const defaultStyle = 'solid';
+      document.querySelectorAll('.style-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.style === defaultStyle);
+      });
     }
   });
 

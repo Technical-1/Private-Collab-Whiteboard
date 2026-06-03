@@ -259,6 +259,7 @@ function resetDrawingState() {
   }
 
   selectedIds.clear();
+  notifySelectionChange();
   hoveredId = null;
   isDragging = false;
   dragStartX = 0;
@@ -1056,6 +1057,16 @@ function handleTouchEnd(e) {
 
 // ============ Selection Functions ============
 
+/**
+ * Centralized helper: dispatch the selection-change window event.
+ * All paths that mutate selectedIds must call this so app.js stays in sync.
+ */
+function notifySelectionChange() {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('selection-change', { detail: { count: selectedIds.size } }));
+  }
+}
+
 function setSelected(id, addToSelection = false) {
   if (addToSelection) {
     // Toggle selection if shift is held
@@ -1069,7 +1080,7 @@ function setSelected(id, addToSelection = false) {
     selectedIds.clear();
     selectedIds.add(id);
   }
-  window.dispatchEvent(new CustomEvent('selection-change', { detail: { count: selectedIds.size } }));
+  notifySelectionChange();
   redrawCanvas();
 }
 
@@ -1077,7 +1088,7 @@ function clearSelection() {
   selectedIds.clear();
   hoveredId = null;
   hideShapeControls(true); // Force close popup when selection is cleared
-  window.dispatchEvent(new CustomEvent('selection-change', { detail: { count: 0 } }));
+  notifySelectionChange();
   redrawCanvas();
 }
 
@@ -1191,6 +1202,7 @@ export function pasteShapes(offsetX = 20, offsetY = 20) {
   if (board.doc) board.doc.transact(doPaste);
   else doPaste();
 
+  notifySelectionChange();
   redrawCanvas();
   return pasted;
 }
@@ -2087,6 +2099,7 @@ function deleteShape(shapeId) {
     };
     if (board.doc) board.doc.transact(run);
     else run();
+    notifySelectionChange();
   }
 }
 
