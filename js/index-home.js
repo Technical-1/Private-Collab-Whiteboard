@@ -1,13 +1,15 @@
     import { generateRoomId } from './utils.js';
-    import { saveBoard, getBoardCount, hasSavedBoards } from './board-history.js';
+    import { saveBoard, getBoardCount } from './board-history.js';
     import { mintRoomCapability, encodeCapabilityHash } from './room-manager.js';
 
-    // Show My Boards link if user has saved boards
-    if (hasSavedBoards()) {
-      const myBoardsLink = document.getElementById('my-boards-link');
-      const boardCountBadge = document.getElementById('board-count-badge');
-      myBoardsLink.style.display = 'flex';
-      boardCountBadge.textContent = getBoardCount();
+    // The "My Boards" link is always shown in the nav; only badge the count
+    // once the visitor actually has saved boards.
+    const boardCountBadge = document.getElementById('board-count-badge');
+    const boardCount = getBoardCount();
+    if (boardCount > 0) {
+      boardCountBadge.textContent = boardCount;
+    } else {
+      boardCountBadge.style.display = 'none';
     }
 
     // Create room handlers

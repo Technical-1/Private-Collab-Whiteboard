@@ -1,10 +1,13 @@
-import { getBoardCount, hasSavedBoards } from './board-history.js';
+import { getBoardCount } from './board-history.js';
 
-// Reveal the "My Boards" nav link (with a count badge) only for visitors who
-// have actually saved a board, matching the landing page's behavior.
-if (hasSavedBoards()) {
-  const myBoardsLink = document.getElementById('my-boards-link');
-  const boardCountBadge = document.getElementById('board-count-badge');
-  if (myBoardsLink) myBoardsLink.style.display = 'flex';
-  if (boardCountBadge) boardCountBadge.textContent = getBoardCount();
+// The "My Boards" link is always shown in the nav; only badge the count once
+// the visitor actually has saved boards.
+const boardCountBadge = document.getElementById('board-count-badge');
+if (boardCountBadge) {
+  const boardCount = getBoardCount();
+  if (boardCount > 0) {
+    boardCountBadge.textContent = String(boardCount);
+  } else {
+    boardCountBadge.style.display = 'none';
+  }
 }
