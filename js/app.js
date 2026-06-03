@@ -7,7 +7,7 @@ import {
   changeUserColor,
   getLocalUserColor
 } from './awareness.js';
-import { setupDrawing, subscribeToBoard, getCanvas, screenToWorld, getViewport, panBy, setZoom, setReadOnlyMode, cleanup as cleanupDrawing, deleteSelectedShapes, copySelectedShapes, pasteShapes, duplicateSelectedShapes, getFitBounds, renderBoardToCanvas } from './drawing.js';
+import { setupDrawing, subscribeToBoard, screenToWorld, getViewport, panBy, setZoom, setReadOnlyMode, cleanup as cleanupDrawing, deleteSelectedShapes, copySelectedShapes, pasteShapes, duplicateSelectedShapes, getFitBounds, renderBoardToCanvas } from './drawing.js';
 import { setupBoardManager, setBoardsContainer } from './boards.js';
 import {
   getRoomIdFromUrl,
@@ -336,6 +336,7 @@ async function main() {
     const EXPORT_SCALE = 2; // retina-quality export
     const ZOOM_MIN_SAVE = 0.05;
     const ZOOM_MAX_SAVE = 8;
+    const ZOOM_FIT_CAP_SAVE = 4; // cap initial fit zoom; interactive zoom can go higher
 
     // Compute a view {x, y, zoom} that fits the given world-space bounds into the
     // preview canvas logical dimensions (PREVIEW_W x PREVIEW_H) with padding.
@@ -346,7 +347,7 @@ async function main() {
       }
       const scaleX = (PREVIEW_W - SAVE_PADDING * 2) / bounds.width;
       const scaleY = (PREVIEW_H - SAVE_PADDING * 2) / bounds.height;
-      const zoom = Math.min(Math.max(ZOOM_MIN_SAVE, Math.min(scaleX, scaleY)), 4);
+      const zoom = Math.min(Math.max(ZOOM_MIN_SAVE, Math.min(scaleX, scaleY)), ZOOM_FIT_CAP_SAVE);
       const cx = bounds.x + bounds.width / 2;
       const cy = bounds.y + bounds.height / 2;
       return {
@@ -445,39 +446,45 @@ async function main() {
       window.removeEventListener('mouseup', onMouseUp);
     }
 
-    // Wait for the user to choose Save PNG / Save PDF / Close
-    const choice = await promise;
-    removeListeners();
+    // Wait for the user to choose Save PNG / Save PDF / Close.
+    // removeListeners() runs unconditionally in the finally block, covering
+    // normal resolution, user dismissal, and any render/export errors.
+    let choice;
+    try {
+      choice = await promise;
 
-    if (!choice) return; // dismissed
+      if (!choice) return; // dismissed
 
-    // Export at higher resolution: same view zoom × EXPORT_SCALE, same world origin
-    const exportW = PREVIEW_W * EXPORT_SCALE;
-    const exportH = PREVIEW_H * EXPORT_SCALE;
-    const exportCanvas = document.createElement('canvas');
-    exportCanvas.width = exportW;
-    exportCanvas.height = exportH;
-    renderBoardToCanvas(exportCanvas, {
-      x: view.x,
-      y: view.y,
-      zoom: view.zoom * EXPORT_SCALE
-    });
-
-    if (choice === 'png') {
-      const dataUrl = exportCanvas.toDataURL('image/png');
-      const link = document.createElement('a');
-      link.download = 'whiteboard.png';
-      link.href = dataUrl;
-      link.click();
-    } else if (choice === 'pdf') {
-      const dataUrl = exportCanvas.toDataURL('image/png');
-      const pdf = new jsPDF({
-        orientation: exportW >= exportH ? 'landscape' : 'portrait',
-        unit: 'px',
-        format: [exportW, exportH]
+      // Export at higher resolution: same view zoom × EXPORT_SCALE, same world origin
+      const exportW = PREVIEW_W * EXPORT_SCALE;
+      const exportH = PREVIEW_H * EXPORT_SCALE;
+      const exportCanvas = document.createElement('canvas');
+      exportCanvas.width = exportW;
+      exportCanvas.height = exportH;
+      renderBoardToCanvas(exportCanvas, {
+        x: view.x,
+        y: view.y,
+        zoom: view.zoom * EXPORT_SCALE
       });
-      pdf.addImage(dataUrl, 'PNG', 0, 0, exportW, exportH);
-      pdf.save('whiteboard.pdf');
+
+      if (choice === 'png') {
+        const dataUrl = exportCanvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        link.download = 'whiteboard.png';
+        link.href = dataUrl;
+        link.click();
+      } else if (choice === 'pdf') {
+        const dataUrl = exportCanvas.toDataURL('image/png');
+        const pdf = new jsPDF({
+          orientation: exportW >= exportH ? 'landscape' : 'portrait',
+          unit: 'px',
+          format: [exportW, exportH]
+        });
+        pdf.addImage(dataUrl, 'PNG', 0, 0, exportW, exportH);
+        pdf.save('whiteboard.pdf');
+      }
+    } finally {
+      removeListeners();
     }
   };
 
