@@ -264,11 +264,11 @@ export function showInviteModal(linkFor, isEncrypted) {
     copyAndCloseBtn.onclick = () => {
       copyToClipboard();
       const permission = modalContainer.querySelector('input[name="permission"]:checked').value;
-      closeModal({ copied: true, permission }); // currentCleanup removes the listener
+      closeModal({ copied: true, permission });
     };
 
     cancelBtn.onclick = () => {
-      closeModal(null); // currentCleanup removes the listener
+      closeModal(null); // radio listeners are DOM-scoped; nothing to tear down
     };
   });
 }
