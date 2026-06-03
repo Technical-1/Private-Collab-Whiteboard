@@ -499,15 +499,19 @@ export function setupDrawing(canvasEl, boardsMap, awarenessInstance, getBoardFn)
       const text = target.text || '';
       const capped = text.length > 4000 ? text.slice(0, 4000) : text;
 
-      // Set ctx font so measureText reflects the sticky's typeface.
+      // Measure with the sticky's typeface; save/restore so this can't leak ctx.font.
+      ctx.save();
       ctx.font = `${fs}px Inter, sans-serif`;
       const lines = wrapMultiline((s) => ctx.measureText(s).width, capped, b.width - pad * 2);
+      ctx.restore();
       const max = stickyMaxScroll(lines.length, lineStep, innerHeight);
 
       if (max <= 0) return false; // content fits — pass the wheel to canvas zoom
 
       const cur = stickyScroll.get(target.id) || 0;
-      stickyScroll.set(target.id, Math.max(0, Math.min(cur + deltaY, max)));
+      const next = Math.max(0, Math.min(cur + deltaY, max));
+      if (next === cur) return true; // consumed the wheel, but nothing to repaint
+      stickyScroll.set(target.id, next);
       redrawCanvas();
       return true;
     }
