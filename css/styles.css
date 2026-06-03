@@ -1769,8 +1769,17 @@ a.logo {
   z-index: 1;
 }
 
-.empty-state svg {
+.empty-state > svg {
+  width: 64px;
+  height: 64px;
   opacity: 0.4;
+}
+
+/* The empty-state container is pointer-events:none (it can overlay a canvas);
+   re-enable clicks on its call-to-action button. */
+.empty-state .btn {
+  pointer-events: auto;
+  margin-top: 8px;
 }
 
 .empty-state p {
@@ -3247,7 +3256,7 @@ body:not(.read-only-mode) .read-only-banner {
       padding: 80px 24px;
     }
 
-    .empty-state svg {
+    .empty-state > svg {
       width: 80px;
       height: 80px;
       color: #475569;
