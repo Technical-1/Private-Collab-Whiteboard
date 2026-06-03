@@ -62,6 +62,7 @@
     </div>
     <div class="nav-links">
       <a href="#features" class="nav-link">Features</a>
+      <a href="/how-it-works.html" class="nav-link">How it works</a>
       <a href="/boards.html" id="my-boards-link" class="nav-link my-boards-link u-hidden">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <rect x="3" y="3" width="7" height="7"/>
@@ -203,8 +204,8 @@
             <line x1="14" y1="1" x2="14" y2="4"/>
           </svg>
         </div>
-        <h3>Zero Backend</h3>
-        <p>No servers storing your drawings. Collaborators connect directly to each other using WebRTC peer-to-peer technology.</p>
+        <h3>No Backend, No Database</h3>
+        <p>Nothing stores your drawings. A tiny relay just forwards bytes between collaborators &mdash; and in encrypted rooms those bytes are ciphertext it can never read.</p>
       </div>
 
       <div class="feature-card">
@@ -214,8 +215,8 @@
             <path d="M9 12l2 2 4-4"/>
           </svg>
         </div>
-        <h3>Password Protected</h3>
-        <p>Add a password to your room. Change it anytime to control access. All traffic is encrypted with your password.</p>
+        <h3>Roles &amp; Sharing</h3>
+        <p>Add a password and share owner, editor, or view-only invite links. View-only is enforced by cryptography &mdash; not a setting a viewer can flip. Rotate access anytime.</p>
       </div>
 
       <div class="feature-card">
@@ -253,6 +254,94 @@
         <p>See everyone's drawings appear instantly. Powered by CRDTs for conflict-free collaboration, even with spotty connections.</p>
       </div>
     </div>
+  </section>
+
+  <!-- Toolkit Section -->
+  <section id="toolkit" class="features">
+    <div class="features-header">
+      <h2>Everything you need to draw together</h2>
+      <p>A real whiteboard &mdash; not just a shared sketchpad.</p>
+    </div>
+
+    <div class="features-grid">
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 19l7-7 3 3-7 7-3-3z"/>
+            <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/>
+            <path d="M2 2l7.586 7.586"/>
+            <circle cx="11" cy="11" r="2"/>
+          </svg>
+        </div>
+        <h3>Rich Drawing Tools</h3>
+        <p>Freehand pen, a translucent highlighter, and an inline text tool &mdash; with adjustable stroke width, colors, and solid/dashed/dotted styles.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7" rx="1"/>
+            <circle cx="17.5" cy="6.5" r="3.5"/>
+            <path d="M5 21l4-7 4 7z"/>
+            <path d="M14 17h7M18 14l3 3-3 3"/>
+          </svg>
+        </div>
+        <h3>Shapes &amp; Arrows</h3>
+        <p>Lines, arrows, rectangles, circles, ellipses, diamonds, and triangles &mdash; with optional fills and arrowheads for quick diagrams.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M15 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10l6-6V5a2 2 0 0 0-2-2z"/>
+            <path d="M15 21v-6h6"/>
+            <path d="M7 8h8M7 12h5"/>
+          </svg>
+        </div>
+        <h3>Sticky Notes &amp; Connectors</h3>
+        <p>Drop color-coded sticky notes with wrapped, scrollable text, then link shapes with connectors that stay attached and re-route as you move things around.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 3l7 18 2.5-7.5L20 11z"/>
+          </svg>
+        </div>
+        <h3>Present Live</h3>
+        <p>See everyone's cursor in real time, and grab the laser pointer to draw attention during a walkthrough &mdash; its trail fades and is never saved to the board.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="3" width="7" height="7" rx="1"/>
+            <rect x="14" y="3" width="7" height="7" rx="1"/>
+            <rect x="14" y="14" width="7" height="7" rx="1"/>
+            <rect x="3" y="14" width="7" height="7" rx="1"/>
+          </svg>
+        </div>
+        <h3>Multiple Boards</h3>
+        <p>Organize a room into separate boards. Create, switch, clear, or delete them &mdash; everyone stays in sync on whichever board they're viewing.</p>
+      </div>
+
+      <div class="feature-card">
+        <div class="feature-icon">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="7 10 12 15 17 10"/>
+            <line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+        </div>
+        <h3>Export to PNG &amp; PDF</h3>
+        <p>Frame exactly what you want in an interactive preview &mdash; pan and zoom &mdash; then save a crisp, retina-resolution PNG or a single-page PDF.</p>
+      </div>
+    </div>
+
+    <p class="features-footnote">
+      Curious how it all works under the hood?
+      <a href="/how-it-works.html">Read How it works &rarr;</a>
+    </p>
   </section>
 
   <!-- CTA Section -->
