@@ -14,6 +14,8 @@ export function sanitizeShape(shape) {
     strokeWidth: safeNumber(shape.strokeWidth, 2),
     fontSize: safeNumber(shape.fontSize, 20),
     strokeStyle: ['solid', 'dashed', 'dotted'].includes(shape.strokeStyle) ? shape.strokeStyle : 'solid',
+    // Unknown arrowHeads values from peers fall back to 'end' (the app default).
+    arrowHeads: ['end', 'both', 'none'].includes(shape.arrowHeads) ? shape.arrowHeads : 'end',
   };
 }
 

@@ -1344,6 +1344,45 @@ function showShapeSettingsPopup(shape, bounds) {
     `;
   }
 
+  // Stroke style (solid / dashed / dotted) for shapes that have a stroke
+  if (hasStroke && !isText) {
+    const ss = shape.strokeStyle || 'solid';
+    html += `
+      <div class="popup-row">
+        <label>Stroke</label>
+        <select id="shape-stroke-style">
+          <option value="solid"  ${ss === 'solid'  ? 'selected' : ''}>Solid</option>
+          <option value="dashed" ${ss === 'dashed' ? 'selected' : ''}>Dashed</option>
+          <option value="dotted" ${ss === 'dotted' ? 'selected' : ''}>Dotted</option>
+        </select>
+      </div>
+    `;
+  }
+
+  // Arrowheads (for arrow and connector tools)
+  if (shape.tool === 'arrow' || shape.tool === 'connector') {
+    const ah = shape.arrowHeads || 'end';
+    html += `
+      <div class="popup-row">
+        <label>Arrowheads</label>
+        <select id="shape-arrowheads">
+          <option value="end"  ${ah === 'end'  ? 'selected' : ''}>End only</option>
+          <option value="both" ${ah === 'both' ? 'selected' : ''}>Both ends</option>
+          <option value="none" ${ah === 'none' ? 'selected' : ''}>None</option>
+        </select>
+      </div>
+    `;
+  }
+
+  // Reverse direction (connector only)
+  if (shape.tool === 'connector') {
+    html += `
+      <div class="popup-row">
+        <button class="popup-action-btn" id="connector-reverse">Reverse direction</button>
+      </div>
+    `;
+  }
+
   // Fill controls (for rect and circle)
   if (hasFill) {
     html += `
@@ -1502,6 +1541,31 @@ function showShapeSettingsPopup(shape, bounds) {
   if (fontFamilySelect) {
     fontFamilySelect.addEventListener('change', (e) => {
       updateShapeProperty(shape.id, 'fontFamily', e.target.value);
+    });
+  }
+
+  // Stroke style handler
+  const strokeStyleSelect = popup.querySelector('#shape-stroke-style');
+  if (strokeStyleSelect) {
+    strokeStyleSelect.addEventListener('change', (e) => {
+      updateShapeProperty(shape.id, 'strokeStyle', e.target.value);
+    });
+  }
+
+  // Arrowheads handler
+  const arrowHeadsSelect = popup.querySelector('#shape-arrowheads');
+  if (arrowHeadsSelect) {
+    arrowHeadsSelect.addEventListener('change', (e) => {
+      updateShapeProperty(shape.id, 'arrowHeads', e.target.value);
+    });
+  }
+
+  // Reverse connector direction handler
+  const reverseBtn = popup.querySelector('#connector-reverse');
+  if (reverseBtn) {
+    reverseBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      reverseConnector(shape.id);
     });
   }
 
@@ -2116,6 +2180,36 @@ function updateShapeProperty(shapeId, property, value) {
 
   board.delete(index);
   board.insert(index, [updated]);
+}
+
+// Swap fromId↔toId and fromAnchor↔toAnchor in one transaction (one undo step).
+function reverseConnector(shapeId) {
+  if (!canMutate()) return;
+
+  const boardName = getCurrentBoard();
+  const board = boards.get(boardName);
+  if (!board) return;
+
+  const index = findShapeIndex(shapeId);
+  if (index === -1) return;
+
+  const shape = board.get(index);
+  if (shape.tool !== 'connector' || shape.locked) return;
+
+  const updated = {
+    ...shape,
+    fromId: shape.toId,
+    toId: shape.fromId,
+    fromAnchor: shape.toAnchor,
+    toAnchor: shape.fromAnchor,
+  };
+
+  const run = () => {
+    board.delete(index);
+    board.insert(index, [updated]);
+  };
+  if (board.doc) board.doc.transact(run);
+  else run();
 }
 
 // ============ Hit Detection ============
@@ -2912,6 +3006,8 @@ function drawCircle(x, y, radius, color, fillColor) {
 }
 
 function drawArrow(startX, startY, x, y, color, sw, strokeStyle, arrowHeads) {
+  // Sanitize arrowHeads: unknown peer values fall back to 'end' (default).
+  const heads = (arrowHeads === 'both' || arrowHeads === 'none') ? arrowHeads : 'end';
   const headLen = Math.max(8, (sw || 2) * 3);
   ctx.strokeStyle = color;
   ctx.lineWidth = sw || 2;
@@ -2923,13 +3019,18 @@ function drawArrow(startX, startY, x, y, color, sw, strokeStyle, arrowHeads) {
   ctx.moveTo(startX, startY);
   ctx.lineTo(x, y);
   ctx.stroke();
+  // 'none' → skip all barbs; draw shaft only.
+  if (heads === 'none') {
+    ctx.setLineDash([]);
+    return;
+  }
   // Arrowheads are always solid
   ctx.setLineDash([]);
   ctx.beginPath();
   for (const p of arrowHeadPoints(startX, startY, x, y, headLen)) {
     ctx.moveTo(x, y); ctx.lineTo(p.x, p.y);
   }
-  if (arrowHeads === 'both') {
+  if (heads === 'both') {
     for (const p of arrowHeadPoints(x, y, startX, startY, headLen)) {
       ctx.moveTo(startX, startY); ctx.lineTo(p.x, p.y);
     }
