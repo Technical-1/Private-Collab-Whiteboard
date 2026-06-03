@@ -61,6 +61,7 @@ const toolSettings = {
   text: { fontSize: 20, fontFamily: 'Arial' },
   'eraser-brush': { strokeWidth: 4 },
   arrow: { strokeWidth: 2 },
+  connector: { strokeWidth: 2 },
   diamond: { strokeWidth: 2, fillEnabled: false, fillColor: '#ffffff' },
   triangle: { strokeWidth: 2, fillEnabled: false, fillColor: '#ffffff' },
   ellipse: { strokeWidth: 2, fillEnabled: false, fillColor: '#ffffff' }
@@ -318,15 +319,13 @@ async function main() {
     } else {
       loadToolSettings(currentToolName);
       updateOptionsVisibility(currentToolName);
-      // Restore the stroke-style button highlight to the current tool's default.
-      // toolSettings doesn't store strokeStyle, so fall back to 'solid' (the
-      // drawing module's default for new shapes).
-      const defaultStyle = 'solid';
+      // Restore the stroke-style button highlight to the drawing module's live default.
+      const defaultStyle = drawingController.getStrokeStyle();
       document.querySelectorAll('.style-btn').forEach(b => {
         b.classList.toggle('active', b.dataset.style === defaultStyle);
       });
-      // Restore arrowhead button highlight to the drawing module's current default.
-      const defaultHeads = 'end';
+      // Restore arrowhead button highlight to the drawing module's live default.
+      const defaultHeads = drawingController.getArrowHeads();
       document.querySelectorAll('.arrowhead-btn').forEach(b => {
         b.classList.toggle('active', b.dataset.heads === defaultHeads);
       });
@@ -755,10 +754,12 @@ function populateControlsFromSelection() {
     fontFamilySelect.value = shape.fontFamily;
   }
 
-  // Arrowheads — highlight the matching button from the selected shape
-  if (shape.arrowHeads) {
+  // Arrowheads — highlight the matching button from the selected shape.
+  // Fall back to 'end' for older connectors/arrows that pre-date the field.
+  if (shape.arrowHeads != null || shape.tool === 'connector' || shape.tool === 'arrow') {
+    const heads = shape.arrowHeads || 'end';
     document.querySelectorAll('.arrowhead-btn').forEach(b => {
-      b.classList.toggle('active', b.dataset.heads === shape.arrowHeads);
+      b.classList.toggle('active', b.dataset.heads === heads);
     });
   }
 }

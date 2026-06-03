@@ -400,7 +400,9 @@ export function setupDrawing(canvasEl, boardsMap, awarenessInstance, getBoardFn)
     subscribeToBoard,
     setStrokeWidth: (width) => { strokeWidth = width; },
     setStrokeStyle: (style) => { currentStrokeStyle = style; },
+    getStrokeStyle: () => currentStrokeStyle,
     setArrowHeads: (value) => { currentArrowHeads = value; },
+    getArrowHeads: () => currentArrowHeads,
     setStickyColor: (c) => { currentStickyColor = c; },
     setFillEnabled: (enabled) => { fillEnabled = enabled; },
     setFillColor: (color) => { fillColor = color; },
@@ -752,7 +754,7 @@ function handleMouseMove(e) {
         ctx.scale(viewport.zoom, viewport.zoom);
         ctx.translate(-viewport.x, -viewport.y);
         ctx.globalAlpha = 0.6;
-        drawArrow(p1.x, p1.y, x, y, '#6366f1', strokeWidth, 'solid', 'end');
+        drawArrow(p1.x, p1.y, x, y, '#6366f1', strokeWidth, currentStrokeStyle, currentArrowHeads);
         ctx.restore();
       }
     }
