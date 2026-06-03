@@ -235,7 +235,7 @@ async function main() {
   document.querySelectorAll('.preset-btn').forEach(btn => {
     btn.onclick = () => {
       const width = parseInt(btn.dataset.width);
-      setStrokeWidth(width);
+      applyStrokeWidth(width);
     };
   });
 
@@ -244,7 +244,7 @@ async function main() {
     btn.onclick = () => {
       document.querySelectorAll('.style-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      drawingController.setStrokeStyle(btn.dataset.style);
+      applyStrokeStyle(btn.dataset.style);
     };
   });
 
@@ -265,7 +265,8 @@ async function main() {
   if (strokeWidthInput) {
     strokeWidthInput.oninput = (e) => {
       const width = parseInt(e.target.value);
-      setStrokeWidth(width);
+      if (strokeValueSpan) strokeValueSpan.textContent = `${width}px`;
+      applyStrokeWidth(width);
     };
   }
 
@@ -275,12 +276,10 @@ async function main() {
     fillEnabledInput.onchange = (e) => {
       const enabled = e.target.checked;
       fillColorInput.disabled = !enabled;
-      drawingController.setFillEnabled(enabled);
-      saveCurrentToolSettings();
+      applyFillEnabled(enabled, fillColorInput.value);
     };
     fillColorInput.oninput = (e) => {
-      drawingController.setFillColor(e.target.value);
-      saveCurrentToolSettings();
+      applyFillColor(e.target.value);
     };
   }
 
@@ -289,19 +288,29 @@ async function main() {
   if (fontSizeInput) {
     fontSizeInput.oninput = (e) => {
       const size = parseInt(e.target.value);
-      fontSizeValueSpan.textContent = `${size}px`;
-      drawingController.setFontSize(size);
-      saveCurrentToolSettings();
+      if (fontSizeValueSpan) fontSizeValueSpan.textContent = `${size}px`;
+      applyFontSize(size);
     };
   }
 
   const fontFamilySelect = document.getElementById('font-family');
   if (fontFamilySelect) {
     fontFamilySelect.onchange = (e) => {
-      drawingController.setFontFamily(e.target.value);
-      saveCurrentToolSettings();
+      applyFontFamily(e.target.value);
     };
   }
+
+  // React to selection changes: populate controls from the selected shape
+  // (count >= 1) or restore tool defaults (count === 0).
+  window.addEventListener('selection-change', (e) => {
+    const { count } = e.detail;
+    if (count >= 1) {
+      populateControlsFromSelection();
+    } else {
+      loadToolSettings(currentToolName);
+      updateOptionsVisibility(currentToolName);
+    }
+  });
 
   // Initialize UI for default tool (select)
   switchTool('select');
@@ -597,6 +606,124 @@ function setStrokeWidth(width) {
     drawingController.setStrokeWidth(width);
     saveCurrentToolSettings();
     updateStrokePresetHighlight(width);
+  }
+}
+
+// ============ Selection-aware option helpers ============
+// Each helper checks whether shapes are selected. If so, the control edits
+// the selected shape(s); otherwise it sets the new-shape default (old behavior).
+
+function applyStrokeWidth(width) {
+  if (drawingController.getSelectedIds().size > 0) {
+    drawingController.updateSelectedShapesProperty('strokeWidth', width);
+    // Also keep the slider/span in sync (already done by the caller for oninput)
+    updateStrokePresetHighlight(width);
+  } else {
+    setStrokeWidth(width);
+  }
+}
+
+function applyStrokeStyle(style) {
+  if (drawingController.getSelectedIds().size > 0) {
+    drawingController.updateSelectedShapesProperty('strokeStyle', style);
+  } else {
+    drawingController.setStrokeStyle(style);
+  }
+}
+
+/**
+ * @param {boolean} enabled
+ * @param {string} currentColor - current value of the fill-color input
+ */
+function applyFillEnabled(enabled, currentColor) {
+  if (drawingController.getSelectedIds().size > 0) {
+    // Mirror what the gear popup does: null = no fill, color string = fill
+    drawingController.updateSelectedShapesProperty('fillColor', enabled ? currentColor : null);
+  } else {
+    drawingController.setFillEnabled(enabled);
+    saveCurrentToolSettings();
+  }
+}
+
+function applyFillColor(color) {
+  if (drawingController.getSelectedIds().size > 0) {
+    drawingController.updateSelectedShapesProperty('fillColor', color);
+  } else {
+    drawingController.setFillColor(color);
+    saveCurrentToolSettings();
+  }
+}
+
+function applyFontSize(size) {
+  if (drawingController.getSelectedIds().size > 0) {
+    drawingController.updateSelectedShapesProperty('fontSize', size);
+  } else {
+    drawingController.setFontSize(size);
+    saveCurrentToolSettings();
+  }
+}
+
+function applyFontFamily(family) {
+  if (drawingController.getSelectedIds().size > 0) {
+    drawingController.updateSelectedShapesProperty('fontFamily', family);
+  } else {
+    drawingController.setFontFamily(family);
+    saveCurrentToolSettings();
+  }
+}
+
+/**
+ * When a selection is active, populate the bottom-panel option controls
+ * (thickness, fill, font, stroke style) from the first selected shape,
+ * and show/hide the right option sections for that shape's tool.
+ */
+function populateControlsFromSelection() {
+  const shape = drawingController.getSelectedShape();
+  if (!shape) return;
+
+  const tool = shape.tool;
+
+  // Show option sections appropriate to the selected shape's tool
+  updateOptionsVisibility(tool);
+
+  // Stroke width
+  if (shape.strokeWidth != null) {
+    const input = document.getElementById('stroke-width');
+    const span = document.getElementById('stroke-value');
+    if (input) {
+      input.value = shape.strokeWidth;
+      updateStrokePresetHighlight(shape.strokeWidth);
+    }
+    if (span) span.textContent = `${shape.strokeWidth}px`;
+  }
+
+  // Stroke style — highlight the matching style button
+  if (shape.strokeStyle) {
+    document.querySelectorAll('.style-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.style === shape.strokeStyle);
+    });
+  }
+
+  // Fill
+  const fillEnabledInput = document.getElementById('fill-enabled');
+  const fillColorInput = document.getElementById('fill-color');
+  if (fillEnabledInput && fillColorInput) {
+    const hasFill = !!shape.fillColor;
+    fillEnabledInput.checked = hasFill;
+    fillColorInput.disabled = !hasFill;
+    if (shape.fillColor) fillColorInput.value = shape.fillColor;
+  }
+
+  // Font
+  const fontSizeInput = document.getElementById('font-size');
+  const fontSizeSpan = document.getElementById('font-size-value');
+  if (fontSizeInput && shape.fontSize != null) {
+    fontSizeInput.value = shape.fontSize;
+    if (fontSizeSpan) fontSizeSpan.textContent = `${shape.fontSize}px`;
+  }
+  const fontFamilySelect = document.getElementById('font-family');
+  if (fontFamilySelect && shape.fontFamily) {
+    fontFamilySelect.value = shape.fontFamily;
   }
 }
 
