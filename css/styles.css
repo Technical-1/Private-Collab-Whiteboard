@@ -708,9 +708,14 @@ body {
 }
 
 .header-center {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
   align-items: center;
   gap: 8px;
+  /* Prevent overlap with left/right sections on very narrow viewports */
+  max-width: calc(100% - 320px);
 }
 
 .board-tabs {
@@ -764,10 +769,50 @@ body {
   color: var(--primary-light);
 }
 
+/* Board tab right-click context menu */
+.board-context-menu {
+  position: fixed;
+  z-index: 9999;
+  background: #1e1e2e;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+  min-width: 140px;
+}
+
+.board-context-menu-item {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  text-align: left;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.board-context-menu-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.board-context-menu-danger {
+  color: #f87171;
+}
+
+.board-context-menu-danger:hover {
+  background: rgba(248, 113, 113, 0.12);
+}
+
 .header-right {
   display: flex;
   align-items: center;
   gap: 12px;
+  margin-left: auto;
 }
 
 .icon-btn {
@@ -795,11 +840,67 @@ body {
   color: var(--primary-light);
 }
 
+/* Header action buttons (Encrypt, Save) — share the same header look */
+.header-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  font-size: 0.82rem;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+}
+
+.header-action-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text-primary);
+}
+
+.header-action-btn:focus-visible {
+  outline: 2px solid var(--primary-light);
+  outline-offset: 2px;
+}
+
+/* Header Invite button — lives in header-right, not the floating cluster */
+.header-invite-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+  border: none;
+  border-radius: 8px;
+  color: #ffffff;
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.35);
+  white-space: nowrap;
+}
+
+.header-invite-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.5);
+}
+
+.header-invite-btn:focus-visible {
+  outline: 2px solid var(--primary-light);
+  outline-offset: 2px;
+}
+
 /* Floating Panels */
 .floating-panel {
   position: fixed;
   background: rgba(26, 26, 46, 0.95);
-  backdrop-filter: blur(16px);
   border: 1px solid var(--border);
   border-radius: 14px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
@@ -971,6 +1072,40 @@ body {
   color: white;
 }
 
+/* Arrowhead segmented control */
+.arrowhead-group {
+  display: flex;
+  gap: 4px;
+}
+
+.arrowhead-btn {
+  min-width: 30px;
+  height: 26px;
+  padding: 0 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.arrowhead-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--text-primary);
+}
+
+.arrowhead-btn.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: white;
+}
+
 /* Sticky-note color palette */
 .sticky-palette {
   display: flex;
@@ -1054,6 +1189,11 @@ body {
   border-color: var(--primary);
 }
 
+.options-panel select option {
+  background: #1e1e2e;          /* dark menu background */
+  color: var(--text-primary);  /* light, legible text */
+}
+
 /* Toggle Switch */
 .toggle-switch {
   position: relative;
@@ -1101,45 +1241,6 @@ body {
   display: none;
 }
 
-/* Side Panel */
-.side-panel {
-  position: fixed;
-  top: 56px;
-  right: 0;
-  width: 280px;
-  height: calc(100vh - 56px);
-  background: rgba(26, 26, 46, 0.95);
-  backdrop-filter: blur(16px);
-  border-left: 1px solid var(--border);
-  padding: 20px;
-  overflow-y: auto;
-  z-index: 80;
-  transition: transform 0.3s ease;
-}
-
-.side-panel.hidden {
-  transform: translateX(100%);
-}
-
-.panel-section {
-  margin-bottom: 24px;
-}
-
-.panel-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
-}
-
-.panel-header h3 {
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
 .user-count-badge {
   font-size: 0.7rem;
   padding: 2px 8px;
@@ -1147,51 +1248,6 @@ body {
   border-radius: 100px;
   color: var(--primary-light);
   font-weight: 600;
-}
-
-.users-list {
-  background: rgba(255, 255, 255, 0.03);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 8px;
-  min-height: 48px;
-}
-
-.user-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px;
-  border-radius: 6px;
-  font-size: 0.85rem;
-  color: var(--text-primary);
-}
-
-.user-item:hover {
-  background: rgba(255, 255, 255, 0.05);
-}
-
-.user-color {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  flex-shrink: 0;
-  /* Per-user color set via the --user-color CSSOM property (CSP-safe; was an
-     inline style="background-color" attribute). */
-  background-color: var(--user-color, #888);
-}
-
-.user-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Color Picker in Side Panel */
-.color-picker-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
 }
 
 #user-color {
@@ -1379,15 +1435,10 @@ body {
   position: fixed;
   top: 56px;
   left: 0;
-  right: 280px;
+  right: 0;
   bottom: 0;
   z-index: 1;
-  transition: right 0.3s ease;
   overflow: hidden;
-}
-
-#canvas-area.panel-hidden {
-  right: 0;
 }
 
 #canvas-container {
@@ -1620,32 +1671,9 @@ canvas {
 /* ============================================
    RESPONSIVE - ROOM PAGE
    ============================================ */
-@media (max-width: 1024px) {
-  .room-page .side-panel {
-    width: 260px;
-  }
-
-  #canvas-area {
-    right: 260px;
-  }
-
-  #canvas-area.panel-hidden {
-    right: 0;
-  }
-}
-
 @media (max-width: 768px) {
   .room-page .room-header {
     padding: 0 12px;
-  }
-
-  .room-page .side-panel {
-    width: 100%;
-    max-width: 320px;
-  }
-
-  #canvas-area {
-    right: 0;
   }
 
   #canvas-container {
@@ -1798,9 +1826,11 @@ canvas {
 }
 
 .shape-settings-popup.locked .popup-row input,
-.shape-settings-popup.locked .popup-row select {
+.shape-settings-popup.locked .popup-row select,
+.shape-settings-popup.locked .popup-action-btn {
   opacity: 0.5;
   cursor: not-allowed;
+  pointer-events: none;
 }
 
 /* ============================================
@@ -2004,6 +2034,29 @@ canvas {
 .layer-btn svg {
   width: 14px;
   height: 14px;
+}
+
+.popup-action-btn {
+  width: 100%;
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  color: #a1a1aa;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-align: center;
+}
+
+.popup-action-btn:hover {
+  background: rgba(99, 102, 241, 0.2);
+  border-color: #6366f1;
+  color: #fff;
+}
+
+.popup-action-btn:active {
+  transform: scale(0.97);
 }
 
 /* ============================================
@@ -2290,67 +2343,58 @@ canvas {
   margin-top: 1px;
 }
 
-/* Extract text modal */
-.extract-text-modal {
+/* Save-as preview modal — wider layout */
+.app-modal.save-modal-wide .modal-content {
+  max-width: 840px;
+}
+
+/* Save-as preview modal */
+.save-preview-wrapper {
+  position: relative;
   display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.extract-tabs {
-  display: flex;
-  gap: 8px;
-  border-bottom: 1px solid var(--border);
-  padding-bottom: 8px;
-}
-
-.extract-tab {
-  padding: 8px 16px;
-  background: transparent;
-  border: none;
-  border-radius: 6px;
-  color: var(--text-muted);
-  font-size: 0.9rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.extract-tab:hover {
-  background: rgba(255, 255, 255, 0.05);
-  color: var(--text-secondary);
-}
-
-.extract-tab.active {
-  background: var(--primary);
-  color: white;
-}
-
-.extract-tab-content {
-  display: none;
-}
-
-.extract-tab-content.active {
-  display: block;
-}
-
-.extract-textarea {
-  width: 100%;
-  min-height: 200px;
-  padding: 12px;
-  background: rgba(0, 0, 0, 0.2);
+  justify-content: center;
+  align-items: center;
+  background: repeating-conic-gradient(rgba(255,255,255,0.06) 0% 25%, transparent 0% 50%) 0 0 / 16px 16px;
   border: 1px solid var(--border);
   border-radius: 8px;
-  color: var(--text-primary);
-  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
-  font-size: 0.85rem;
-  line-height: 1.5;
-  resize: vertical;
+  overflow: hidden;
+  line-height: 0; /* prevent inline-block gap below canvas */
 }
 
-.extract-textarea:focus {
-  outline: none;
-  border-color: var(--primary);
+.save-preview-canvas {
+  display: block;
+  /* Logical CSS size: 760×460. Physical pixels set via JS attributes for DPR. */
+  width: 760px;
+  max-width: 100%;
+  height: auto;
+  aspect-ratio: 760 / 460;
+  border-radius: 6px;
+  touch-action: none;
+}
+
+.save-preview-hint {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  text-align: center;
+  margin-top: 8px;
+  margin-bottom: 0;
+}
+
+/* Save-preview zoom cluster — overlaid on the preview wrapper */
+.save-zoom-cluster {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 8px;
+  background: rgba(24, 24, 27, 0.85);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  backdrop-filter: blur(8px);
+  z-index: 10;
 }
 
 /* Keyboard shortcuts modal */
@@ -2408,10 +2452,7 @@ canvas {
 .read-only-mode .toolbar-panel,
 .read-only-mode .options-panel,
 .read-only-mode #clear-board,
-.read-only-mode .shape-control-btn,
-.read-only-mode .actions-section,
-.read-only-mode .share-section,
-.read-only-mode .color-section {
+.read-only-mode .shape-control-btn {
   display: none !important;
 }
 
@@ -2462,10 +2503,6 @@ body:not(.read-only-mode) .read-only-banner {
   align-items: center;
   gap: 4px;
   padding: 8px;
-  background: rgba(26, 26, 46, 0.95);
-  backdrop-filter: blur(10px);
-  border-radius: 10px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
   z-index: 80;
 }
 
@@ -2629,8 +2666,7 @@ body:not(.read-only-mode) .read-only-banner {
   }
 
   .header-center {
-    flex: 1;
-    max-width: 50%;
+    max-width: calc(100% - 200px);
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
   }
@@ -2675,18 +2711,6 @@ body:not(.read-only-mode) .read-only-banner {
   }
 }
 
-/* Hide floating panel on very small screens - use modal instead */
-@media (max-width: 480px) {
-  #floating-panel {
-    display: none;
-  }
-
-  /* Add a toggle button to show panel as modal */
-  .mobile-panel-toggle {
-    display: block;
-  }
-}
-
 /* Landscape phone optimization */
 @media (max-height: 500px) and (orientation: landscape) {
   .toolbar-panel {
@@ -2714,44 +2738,8 @@ body:not(.read-only-mode) .read-only-banner {
   }
 }
 
-/* Hide side panel by default on mobile */
+/* Compact zoom controls for mobile */
 @media (max-width: 768px) {
-  #side-panel {
-    position: fixed;
-    top: 56px;
-    right: -280px;
-    width: 280px;
-    height: calc(100vh - 56px);
-    z-index: 500;
-    transition: right 0.3s ease;
-    box-shadow: -4px 0 20px rgba(0, 0, 0, 0.2);
-  }
-
-  #side-panel:not(.hidden) {
-    right: 0;
-  }
-
-  #side-panel.hidden {
-    right: -280px;
-  }
-
-  #canvas-area {
-    right: 0 !important;
-  }
-
-  /* Backdrop when panel is open */
-  #side-panel:not(.hidden)::before {
-    content: '';
-    position: fixed;
-    left: 0;
-    top: 0;
-    right: 280px;
-    bottom: 0;
-    background: rgba(0, 0, 0, 0.3);
-    z-index: -1;
-  }
-
-  /* Compact zoom controls for mobile */
   .zoom-panel {
     padding: 6px;
     gap: 4px;
@@ -2767,26 +2755,6 @@ body:not(.read-only-mode) .read-only-banner {
   .zoom-level-btn {
     padding: 6px 10px;
     font-size: 0.75rem;
-  }
-}
-
-/* Fullscreen-like experience on small screens */
-@media (max-width: 480px) {
-  #side-panel {
-    width: 100%;
-    right: -100%;
-  }
-
-  #side-panel:not(.hidden) {
-    right: 0;
-  }
-
-  #side-panel.hidden {
-    right: -100%;
-  }
-
-  #side-panel:not(.hidden)::before {
-    display: none;
   }
 }
 
@@ -3086,3 +3054,74 @@ body:not(.read-only-mode) .read-only-banner {
 .browser-unsupported__inner { max-width: 500px; }
 .browser-unsupported__title { color: #ef4444; margin-bottom: 16px; }
 .browser-unsupported__msg { color: #71717a; white-space: pre-line; }
+
+.sticky-edit-input {
+  position: absolute;
+  border: none;
+  outline: none;
+  resize: none;
+  overflow-y: auto;
+  padding: 12px;                 /* matches drawSticky pad */
+  border-radius: 6px;            /* matches drawSticky roundRect */
+  background: var(--sticky-fill, #fff8b8);
+  color: #1a1a1a;
+  line-height: 1.3;              /* matches drawSticky fs*1.3 */
+  font-family: Inter, sans-serif;
+  box-sizing: border-box;
+  z-index: 30;
+}
+
+/* ============================================
+   TOP-RIGHT CLUSTER (presence + actions bar)
+   ============================================ */
+.top-right-cluster {
+  position: fixed;
+  top: 68px;            /* below the 56px header */
+  right: 12px;
+  display: flex;
+  align-items: center;
+  z-index: 90;
+}
+
+/* ============================================
+   PRESENCE AVATARS (top-right overlay)
+   ============================================ */
+.presence-cluster {
+  display: flex;
+  flex-direction: row-reverse; /* stack overlap with newest on top-left */
+  align-items: center;
+  gap: 0;
+  pointer-events: none;
+}
+.presence-cluster .avatar {
+  position: relative;       /* needed so .avatar-color-input can be absolutely positioned */
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--avatar-color, #6366f1);
+  color: #fff;
+  font: 600 13px/32px Inter, sans-serif;
+  text-align: center;
+  border: 2px solid var(--bg, #15151f);
+  margin-left: -8px;            /* overlap */
+  pointer-events: auto;
+  user-select: none;
+}
+.presence-cluster .avatar-self { box-shadow: 0 0 0 2px #fff inset; }
+.presence-cluster .avatar-more { background: #44445a; font-size: 11px; }
+
+/* Transparent color input overlaid on the local user's avatar bubble.
+   Fills the bubble exactly so clicking the letter opens the native color picker.
+   Opacity 0 keeps the avatar letter visible through it. */
+.avatar-color-input {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+  border: none;
+  padding: 0;
+  border-radius: 50%;
+}
+

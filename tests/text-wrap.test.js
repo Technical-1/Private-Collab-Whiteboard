@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { wrapText } from '../js/text-wrap.js';
+import { wrapText, wrapMultiline, stickyMaxScroll } from '../js/text-wrap.js';
 
 const measure = (s) => s.length * 10; // 10px per char, deterministic
 
@@ -24,5 +24,46 @@ describe('wrapText', () => {
   it('merges a hard-break remainder with the next word when it fits', () => {
     // "abcdefg hi" @60: hard-break -> "abcdef" + remainder "g"; then "g hi" (40) <= 60
     expect(wrapText(measure, 'abcdefg hi', 60)).toEqual(['abcdef', 'g hi']);
+  });
+});
+
+describe('wrapMultiline', () => {
+  // A measure() where every char is 1 unit wide.
+  const measure = (s) => s.length;
+
+  it('keeps explicit newlines as separate lines', () => {
+    expect(wrapMultiline(measure, 'a\nb\nc', 100)).toEqual(['a', 'b', 'c']);
+  });
+  it('wraps each segment by width and preserves blank lines', () => {
+    // maxWidth 3: "aaaa" hard-breaks; blank line between stays.
+    expect(wrapMultiline(measure, 'aaaa\n\nbb', 3)).toEqual(['aaa', 'a', '', 'bb']);
+  });
+  it('single line with no newline behaves like wrapText', () => {
+    expect(wrapMultiline(measure, 'hello world', 100)).toEqual(['hello world']);
+  });
+  it('non-string input returns []', () => {
+    expect(wrapMultiline(measure, null, 100)).toEqual([]);
+  });
+});
+
+describe('stickyMaxScroll', () => {
+  it('returns 0 when content fits exactly (no overflow)', () => {
+    // 3 lines * 20px step = 60px total, innerHeight = 60px → fits, no scroll
+    expect(stickyMaxScroll(3, 20, 60)).toBe(0);
+  });
+
+  it('returns 0 when content is smaller than the available area', () => {
+    // 2 lines * 20px = 40px, innerHeight = 80px → no scroll
+    expect(stickyMaxScroll(2, 20, 80)).toBe(0);
+  });
+
+  it('returns positive value when content overflows', () => {
+    // 5 lines * 20px = 100px, innerHeight = 60px → 40px of overflow
+    expect(stickyMaxScroll(5, 20, 60)).toBe(40);
+  });
+
+  it('handles exact boundary: one extra line beyond capacity → positive', () => {
+    // 4 lines * 20px = 80px, innerHeight = 60px → 20px overflow
+    expect(stickyMaxScroll(4, 20, 60)).toBe(20);
   });
 });

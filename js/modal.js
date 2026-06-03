@@ -177,7 +177,7 @@ export function showAlert(title, description = '') {
 }
 
 // Custom modal for inviting users with role selection
-export function showInviteModal(currentLink, isEncrypted) {
+export function showInviteModal(linkFor, isEncrypted) {
   return new Promise((resolve) => {
     currentResolve = resolve;
 
@@ -186,7 +186,7 @@ export function showInviteModal(currentLink, isEncrypted) {
         <div class="modal-input-group">
           <label>Share Link</label>
           <div class="share-link-row">
-            <input type="text" id="modal-share-link" class="modal-input" value="${escapeHtml(currentLink)}" readonly>
+            <input type="text" id="modal-share-link" class="modal-input" value="" readonly>
             <button class="modal-copy-btn" id="modal-copy-link" title="Copy">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <rect x="9" y="9" width="13" height="13" rx="2"/>
@@ -235,26 +235,12 @@ export function showInviteModal(currentLink, isEncrypted) {
     const linkInput = modalContainer.querySelector('#modal-share-link');
     const permissionRadios = modalContainer.querySelectorAll('input[name="permission"]');
 
-    // Function to update the link based on the selected permission.
-    const updateLink = () => {
+    const refreshLink = () => {
       const permission = modalContainer.querySelector('input[name="permission"]:checked').value;
-      const event = new CustomEvent('update-invite-link', {
-        detail: { permission },
-      });
-      window.dispatchEvent(event);
+      linkInput.value = linkFor(permission);
     };
-
-    permissionRadios.forEach(radio => {
-      radio.addEventListener('change', updateLink);
-    });
-    // Listen for link updates
-    const linkUpdateHandler = (e) => {
-      linkInput.value = e.detail.link;
-    };
-    window.addEventListener('invite-link-updated', linkUpdateHandler);
-    // Remove the window listener on ANY close path (backdrop, X, Escape, or
-    // either button) — closeModal runs this teardown.
-    currentCleanup = () => window.removeEventListener('invite-link-updated', linkUpdateHandler);
+    permissionRadios.forEach(radio => radio.addEventListener('change', refreshLink));
+    refreshLink(); // set initial value from the selected (edit) radio
 
     const copyToClipboard = () => {
       navigator.clipboard.writeText(linkInput.value);
@@ -278,11 +264,11 @@ export function showInviteModal(currentLink, isEncrypted) {
     copyAndCloseBtn.onclick = () => {
       copyToClipboard();
       const permission = modalContainer.querySelector('input[name="permission"]:checked').value;
-      closeModal({ copied: true, permission }); // currentCleanup removes the listener
+      closeModal({ copied: true, permission });
     };
 
     cancelBtn.onclick = () => {
-      closeModal(null); // currentCleanup removes the listener
+      closeModal(null); // radio listeners are DOM-scoped; nothing to tear down
     };
   });
 }
@@ -336,94 +322,77 @@ export function showPasswordModal(title, description = '', isChange = false) {
   });
 }
 
-
 /**
- * Show extract text modal with tabs for different groupings
- * @param {Array} texts - Array of text objects with {x, y, text, user, color}
+ * Show an interactive save-as modal with a pannable/zoomable preview canvas.
+ * The caller renders board content into the canvas and wires pan/zoom interactions.
+ *
+ * Returns an object with:
+ *   - previewCanvas: the canvas element (already in the DOM when this returns)
+ *   - promise: resolves to 'png' | 'pdf' | null when the user acts
  */
-export function showExtractTextModal(texts) {
-  return new Promise((resolve) => {
+export function showSaveModal() {
+  initModals();
+
+  const bodyHTML = `
+    <div class="save-preview-wrapper">
+      <canvas class="save-preview-canvas"></canvas>
+      <div class="save-zoom-cluster">
+        <button id="save-zoom-out" class="zoom-btn" title="Zoom out">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/>
+            <line x1="8" y1="11" x2="14" y2="11"/>
+          </svg>
+        </button>
+        <button id="save-fit" class="zoom-btn" title="Fit all">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+          </svg>
+        </button>
+        <button id="save-zoom-in" class="zoom-btn" title="Zoom in">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"/>
+            <line x1="8" y1="11" x2="14" y2="11"/>
+            <line x1="11" y1="8" x2="11" y2="14"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+    <p class="save-preview-hint">Scroll to zoom · drag to pan</p>
+  `;
+
+  const actions = `
+    <button class="modal-btn modal-btn-secondary" id="modal-close">Close</button>
+    <button class="modal-btn modal-btn-secondary" id="save-pdf">Save as PDF</button>
+    <button class="modal-btn modal-btn-primary" id="save-png">Save as PNG</button>
+  `;
+
+  // Widen the modal for the larger preview before showModal, so it's sized correctly on open
+  const appModal = modalContainer.querySelector('.app-modal');
+  appModal.classList.add('save-modal-wide');
+
+  showModal('Save Board', '', bodyHTML, actions);
+
+  const previewCanvas = modalContainer.querySelector('.save-preview-canvas');
+
+  const promise = new Promise((resolve) => {
     currentResolve = resolve;
 
-    // Generate text grouped by user
-    const userGroups = texts.reduce((groups, text) => {
-      if (!groups[text.user]) groups[text.user] = [];
-      groups[text.user].push(text.text);
-      return groups;
-    }, {});
-
-    const byUserOutput = Object.keys(userGroups).map(user =>
-      `${user}:\n${userGroups[user].join('\n')}`
-    ).join('\n\n');
-
-    // Generate text sorted by position
-    const sortedTexts = [...texts].sort((a, b) => {
-      if (Math.abs(a.y - b.y) < 20) return a.x - b.x; // Same line threshold
-      return a.y - b.y;
-    });
-    const byPositionOutput = sortedTexts.map(t => t.text).join('\n');
-
-    const bodyHTML = `
-      <div class="extract-text-modal">
-        <div class="extract-tabs">
-          <button class="extract-tab active" data-tab="user">By User</button>
-          <button class="extract-tab" data-tab="position">By Position</button>
-        </div>
-        <div class="extract-tab-content active" data-content="user">
-          <textarea class="extract-textarea" readonly>${escapeHtml(byUserOutput)}</textarea>
-        </div>
-        <div class="extract-tab-content" data-content="position">
-          <textarea class="extract-textarea" readonly>${escapeHtml(byPositionOutput)}</textarea>
-        </div>
-      </div>
-    `;
-
-    const actions = `
-      <button class="modal-btn modal-btn-secondary" id="modal-close">Close</button>
-      <button class="modal-btn modal-btn-primary" id="modal-copy">Copy to Clipboard</button>
-    `;
-
-    showModal('Extracted Text', `Found ${texts.length} text item${texts.length !== 1 ? 's' : ''}`, bodyHTML, actions);
-
-    // Wire up tab switching
-    const tabs = modalContainer.querySelectorAll('.extract-tab');
-    const contents = modalContainer.querySelectorAll('.extract-tab-content');
-
-    tabs.forEach(tab => {
-      tab.addEventListener('click', () => {
-        const tabName = tab.dataset.tab;
-
-        // Update active tab
-        tabs.forEach(t => t.classList.remove('active'));
-        tab.classList.add('active');
-
-        // Update active content
-        contents.forEach(c => {
-          c.classList.toggle('active', c.dataset.content === tabName);
-        });
-      });
-    });
-
-    // Wire up buttons
-    const closeBtn = modalContainer.querySelector('#modal-close');
-    const copyBtn = modalContainer.querySelector('#modal-copy');
-
-    closeBtn.onclick = () => {
-      closeModal(null);
+    const done = (choice) => {
+      appModal.classList.remove('save-modal-wide');
+      closeModal(choice);
     };
 
-    copyBtn.onclick = () => {
-      // Get the currently visible textarea
-      const activeContent = modalContainer.querySelector('.extract-tab-content.active textarea');
-      navigator.clipboard.writeText(activeContent.value);
+    modalContainer.querySelector('#modal-close').onclick = () => done(null);
+    modalContainer.querySelector('#save-png').onclick = () => done('png');
+    modalContainer.querySelector('#save-pdf').onclick = () => done('pdf');
 
-      // Show copied feedback
-      copyBtn.textContent = 'Copied!';
-      setTimeout(() => {
-        copyBtn.textContent = 'Copy to Clipboard';
-      }, 2000);
+    // Ensure the wide class is removed on backdrop/X/Escape dismissal too
+    currentCleanup = () => {
+      appModal.classList.remove('save-modal-wide');
     };
   });
+
+  return { previewCanvas, promise };
 }
 
 /**

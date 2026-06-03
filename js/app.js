@@ -1,3 +1,4 @@
+import { jsPDF } from 'jspdf';
 import { initializeYjs, rotateRoom } from './yjs-setup.js';
 import {
   initializeAwareness,
@@ -6,7 +7,7 @@ import {
   changeUserColor,
   getLocalUserColor
 } from './awareness.js';
-import { setupDrawing, subscribeToBoard, getTexts, getCanvas, screenToWorld, getViewport, panBy, setZoom, setReadOnlyMode, cleanup as cleanupDrawing, deleteSelectedShapes, copySelectedShapes, pasteShapes, duplicateSelectedShapes, getFitBounds } from './drawing.js';
+import { setupDrawing, subscribeToBoard, screenToWorld, getViewport, panBy, setZoom, setReadOnlyMode, cleanup as cleanupDrawing, deleteSelectedShapes, copySelectedShapes, pasteShapes, duplicateSelectedShapes, getFitBounds, renderBoardToCanvas } from './drawing.js';
 import { setupBoardManager, setBoardsContainer } from './boards.js';
 import {
   getRoomIdFromUrl,
@@ -26,7 +27,7 @@ import {
   showInviteModal,
   showPasswordModal,
   showKeyboardShortcuts,
-  showExtractTextModal
+  showSaveModal
 } from './modal.js';
 import { shouldDeleteSelection } from './keyboard-intent.js';
 import {
@@ -53,17 +54,18 @@ let readOnly = false;
 
 // Per-tool settings storage
 const toolSettings = {
-  line: { strokeWidth: 2 },
-  rect: { strokeWidth: 2, fillEnabled: false, fillColor: '#ffffff' },
-  circle: { strokeWidth: 2, fillEnabled: false, fillColor: '#ffffff' },
-  freehand: { strokeWidth: 2 },
+  line: { strokeWidth: 2, strokeStyle: 'solid' },
+  rect: { strokeWidth: 2, strokeStyle: 'solid', fillEnabled: false, fillColor: '#ffffff' },
+  circle: { strokeWidth: 2, strokeStyle: 'solid', fillEnabled: false, fillColor: '#ffffff' },
+  freehand: { strokeWidth: 2, strokeStyle: 'solid' },
   highlight: { strokeWidth: 16 },
   text: { fontSize: 20, fontFamily: 'Arial' },
   'eraser-brush': { strokeWidth: 4 },
-  arrow: { strokeWidth: 2 },
-  diamond: { strokeWidth: 2, fillEnabled: false, fillColor: '#ffffff' },
-  triangle: { strokeWidth: 2, fillEnabled: false, fillColor: '#ffffff' },
-  ellipse: { strokeWidth: 2, fillEnabled: false, fillColor: '#ffffff' }
+  arrow: { strokeWidth: 2, strokeStyle: 'solid' },
+  connector: { strokeWidth: 2, strokeStyle: 'solid' },
+  diamond: { strokeWidth: 2, strokeStyle: 'solid', fillEnabled: false, fillColor: '#ffffff' },
+  triangle: { strokeWidth: 2, strokeStyle: 'solid', fillEnabled: false, fillColor: '#ffffff' },
+  ellipse: { strokeWidth: 2, strokeStyle: 'solid', fillEnabled: false, fillColor: '#ffffff' }
 };
 
 let currentToolName = 'select';
@@ -140,7 +142,8 @@ async function main() {
   });
 
   // Initialize user awareness with callback for live drawing updates.
-  const { color } = initializeAwareness(awareness, userName, () => {
+  // (color is owned by awareness now — the picker lives on the local avatar)
+  initializeAwareness(awareness, userName, () => {
     // Redraw canvas when other users' awareness changes (for live drawing preview)
     if (drawingController) {
       drawingController.redraw();
@@ -148,18 +151,11 @@ async function main() {
   });
 
   // Set containers for rendering
-  setUsersContainer(document.getElementById('users'));
+  setUsersContainer(document.getElementById('presence'));
   setCursorsContainer(document.getElementById('cursors'));
   setBoardsContainer(document.getElementById('boards'));
 
-  // Setup color picker
-  const colorPicker = document.getElementById('user-color');
-  if (colorPicker) {
-    colorPicker.value = color;
-    colorPicker.addEventListener('input', (e) => {
-      changeUserColor(e.target.value);
-    });
-  }
+  // Color picker is now handled in awareness.js (overlaid on the local avatar bubble).
 
   // Setup board manager
   boardManager = setupBoardManager(boards, awareness, (boardName) => {
@@ -235,7 +231,7 @@ async function main() {
   document.querySelectorAll('.preset-btn').forEach(btn => {
     btn.onclick = () => {
       const width = parseInt(btn.dataset.width);
-      setStrokeWidth(width);
+      applyStrokeWidth(width);
     };
   });
 
@@ -244,7 +240,16 @@ async function main() {
     btn.onclick = () => {
       document.querySelectorAll('.style-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
-      drawingController.setStrokeStyle(btn.dataset.style);
+      applyStrokeStyle(btn.dataset.style);
+    };
+  });
+
+  // Wire up arrowhead buttons
+  document.querySelectorAll('.arrowhead-btn').forEach(btn => {
+    btn.onclick = () => {
+      document.querySelectorAll('.arrowhead-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      applyArrowHeads(btn.dataset.heads);
     };
   });
 
@@ -265,7 +270,8 @@ async function main() {
   if (strokeWidthInput) {
     strokeWidthInput.oninput = (e) => {
       const width = parseInt(e.target.value);
-      setStrokeWidth(width);
+      if (strokeValueSpan) strokeValueSpan.textContent = `${width}px`;
+      applyStrokeWidth(width);
     };
   }
 
@@ -275,12 +281,10 @@ async function main() {
     fillEnabledInput.onchange = (e) => {
       const enabled = e.target.checked;
       fillColorInput.disabled = !enabled;
-      drawingController.setFillEnabled(enabled);
-      saveCurrentToolSettings();
+      applyFillEnabled(enabled, fillColorInput.value);
     };
     fillColorInput.oninput = (e) => {
-      drawingController.setFillColor(e.target.value);
-      saveCurrentToolSettings();
+      applyFillColor(e.target.value);
     };
   }
 
@@ -289,17 +293,15 @@ async function main() {
   if (fontSizeInput) {
     fontSizeInput.oninput = (e) => {
       const size = parseInt(e.target.value);
-      fontSizeValueSpan.textContent = `${size}px`;
-      drawingController.setFontSize(size);
-      saveCurrentToolSettings();
+      if (fontSizeValueSpan) fontSizeValueSpan.textContent = `${size}px`;
+      applyFontSize(size);
     };
   }
 
   const fontFamilySelect = document.getElementById('font-family');
   if (fontFamilySelect) {
     fontFamilySelect.onchange = (e) => {
-      drawingController.setFontFamily(e.target.value);
-      saveCurrentToolSettings();
+      applyFontFamily(e.target.value);
     };
   }
 
@@ -313,6 +315,7 @@ async function main() {
   };
 
   document.getElementById('clear-board').onclick = async () => {
+    if (readOnly) return;
     const confirmed = await showConfirm(
       'Clear Board?',
       'This will remove all drawings from the current board. This action cannot be undone.',
@@ -325,75 +328,212 @@ async function main() {
     }
   };
 
-  // Wire up text extraction
-  document.getElementById('extract-text').onclick = async () => {
-    const texts = getTexts();
+  // Wire up save as image — opens interactive pan/zoom preview modal
+  document.getElementById('save-image').onclick = async () => {
+    const SAVE_PADDING = FIT_PADDING;
+    const PREVIEW_W = 760;
+    const PREVIEW_H = 460;
+    const EXPORT_SCALE = 2; // retina-quality export
+    const ZOOM_MIN_SAVE = 0.05;
+    const ZOOM_MAX_SAVE = 8;
+    const ZOOM_FIT_CAP_SAVE = 4; // cap initial fit zoom; interactive zoom can go higher
 
-    if (texts.length === 0) {
-      await showAlert('No Text Found', 'There is no text on this board to extract.');
-      return;
+    // Compute a view {x, y, zoom} that fits the given world-space bounds into the
+    // preview canvas logical dimensions (PREVIEW_W x PREVIEW_H) with padding.
+    function computeFitView(bounds) {
+      if (!bounds || bounds.width === 0 || bounds.height === 0) {
+        const vp = getViewport();
+        return { x: vp.x, y: vp.y, zoom: vp.zoom };
+      }
+      const scaleX = (PREVIEW_W - SAVE_PADDING * 2) / bounds.width;
+      const scaleY = (PREVIEW_H - SAVE_PADDING * 2) / bounds.height;
+      const zoom = Math.min(Math.max(ZOOM_MIN_SAVE, Math.min(scaleX, scaleY)), ZOOM_FIT_CAP_SAVE);
+      const cx = bounds.x + bounds.width / 2;
+      const cy = bounds.y + bounds.height / 2;
+      return {
+        x: cx - (PREVIEW_W / 2) / zoom,
+        y: cy - (PREVIEW_H / 2) / zoom,
+        zoom
+      };
     }
 
-    await showExtractTextModal(texts);
-  };
+    // Mutable preview view (logical canvas coordinates, not physical pixels)
+    let view = computeFitView(getAllShapesBounds());
 
-  // Wire up save as image
-  document.getElementById('save-image').onclick = () => {
-    const canvas = getCanvas();
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = canvas.width;
-    tempCanvas.height = canvas.height;
-    const tempCtx = tempCanvas.getContext('2d');
+    // Open the modal — canvas is synchronously available in the returned object
+    const { previewCanvas, promise } = showSaveModal();
 
-    tempCtx.fillStyle = '#FFFFFF';
-    tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-    tempCtx.drawImage(canvas, 0, 0);
+    // Size the canvas: physical pixels = logical × devicePixelRatio for crispness.
+    // We set .width/.height attributes (not CSS) — no inline style, CSP-safe.
+    const dpr = window.devicePixelRatio || 1;
+    previewCanvas.width = PREVIEW_W * dpr;
+    previewCanvas.height = PREVIEW_H * dpr;
 
-    const link = document.createElement('a');
-    link.download = 'whiteboard.png';
-    link.href = tempCanvas.toDataURL();
-    link.click();
-  };
+    // Render current view into the preview canvas.
+    // The view's zoom is multiplied by dpr so the shapes fill the physical pixels;
+    // the world-space x/y stay unchanged.
+    function render() {
+      renderBoardToCanvas(previewCanvas, {
+        x: view.x,
+        y: view.y,
+        zoom: view.zoom * dpr
+      });
+    }
 
-  // Wire up share link
-  const shareLink = getShareableLink();
-  document.getElementById('share-link').value = shareLink;
+    render();
 
-  // Show/hide password controls based on encryption status
-  const passwordControls = document.getElementById('password-controls');
-  if (passwordControls) {
-    passwordControls.style.display = isEncrypted ? 'block' : 'none';
-  }
+    // --- Save-preview zoom cluster buttons ---
+    const ZOOM_STEP_SAVE = 1.25;
 
-  // Simple copy link button. For encrypted rooms the capability (password +
-  // keys) is always embedded — a link without it would drop the recipient into a
-  // different, open room. This is the quick "edit" link; use Invite for view-only.
-  document.getElementById('copy-link').onclick = async () => {
-    const link = getShareableLink();
-    copyToClipboard(link);
+    const saveZoomInBtn  = document.getElementById('save-zoom-in');
+    const saveZoomOutBtn = document.getElementById('save-zoom-out');
+    const saveFitBtn     = document.getElementById('save-fit');
 
-    await showAlert('Link Copied', isEncrypted
-      ? 'The link has been copied. It includes the room password — anyone with it can access the room.'
-      : 'The share link has been copied to your clipboard.');
+    if (saveZoomInBtn) {
+      saveZoomInBtn.addEventListener('click', () => {
+        // Keep world point at preview center fixed
+        const cx = PREVIEW_W / 2;
+        const cy = PREVIEW_H / 2;
+        const worldX = cx / view.zoom + view.x;
+        const worldY = cy / view.zoom + view.y;
+        view.zoom = Math.min(ZOOM_MAX_SAVE, view.zoom * ZOOM_STEP_SAVE);
+        view.x = worldX - cx / view.zoom;
+        view.y = worldY - cy / view.zoom;
+        render();
+      });
+    }
+
+    if (saveZoomOutBtn) {
+      saveZoomOutBtn.addEventListener('click', () => {
+        const cx = PREVIEW_W / 2;
+        const cy = PREVIEW_H / 2;
+        const worldX = cx / view.zoom + view.x;
+        const worldY = cy / view.zoom + view.y;
+        view.zoom = Math.max(ZOOM_MIN_SAVE, view.zoom / ZOOM_STEP_SAVE);
+        view.x = worldX - cx / view.zoom;
+        view.y = worldY - cy / view.zoom;
+        render();
+      });
+    }
+
+    if (saveFitBtn) {
+      saveFitBtn.addEventListener('click', () => {
+        view = computeFitView(getAllShapesBounds());
+        render();
+      });
+    }
+
+    // --- Wheel: zoom toward cursor ---
+    function onWheel(e) {
+      e.preventDefault();
+      const rect = previewCanvas.getBoundingClientRect();
+      // Map CSS-pixel cursor position → logical canvas coordinates
+      const cx = (e.clientX - rect.left) * (PREVIEW_W / rect.width);
+      const cy = (e.clientY - rect.top) * (PREVIEW_H / rect.height);
+      // World point under the cursor before zoom
+      const worldX = cx / view.zoom + view.x;
+      const worldY = cy / view.zoom + view.y;
+
+      const factor = e.deltaY > 0 ? 0.9 : 1.1;
+      view.zoom = Math.max(ZOOM_MIN_SAVE, Math.min(ZOOM_MAX_SAVE, view.zoom * factor));
+      // Keep that world point under the cursor after zoom
+      view.x = worldX - cx / view.zoom;
+      view.y = worldY - cy / view.zoom;
+      render();
+    }
+
+    // --- Mousedown/move/up: drag to pan ---
+    let dragActive = false;
+    let dragLastX = 0;
+    let dragLastY = 0;
+
+    function onMouseDown(e) {
+      dragActive = true;
+      dragLastX = e.clientX;
+      dragLastY = e.clientY;
+      previewCanvas.style.cursor = 'grabbing';
+    }
+
+    function onMouseMove(e) {
+      if (!dragActive) return;
+      const rect = previewCanvas.getBoundingClientRect();
+      const scaleX = PREVIEW_W / rect.width;
+      const scaleY = PREVIEW_H / rect.height;
+      const dx = (e.clientX - dragLastX) * scaleX / view.zoom;
+      const dy = (e.clientY - dragLastY) * scaleY / view.zoom;
+      view.x -= dx;
+      view.y -= dy;
+      dragLastX = e.clientX;
+      dragLastY = e.clientY;
+      render();
+    }
+
+    function onMouseUp() {
+      if (!dragActive) return;
+      dragActive = false;
+      previewCanvas.style.cursor = 'grab';
+    }
+
+    previewCanvas.style.cursor = 'grab';
+    previewCanvas.addEventListener('wheel', onWheel, { passive: false });
+    previewCanvas.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+
+    function removeListeners() {
+      previewCanvas.removeEventListener('wheel', onWheel);
+      previewCanvas.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    }
+
+    // Wait for the user to choose Save PNG / Save PDF / Close.
+    // removeListeners() runs unconditionally in the finally block, covering
+    // normal resolution, user dismissal, and any render/export errors.
+    let choice;
+    try {
+      choice = await promise;
+
+      if (!choice) return; // dismissed
+
+      // Export at higher resolution: same view zoom × EXPORT_SCALE, same world origin
+      const exportW = PREVIEW_W * EXPORT_SCALE;
+      const exportH = PREVIEW_H * EXPORT_SCALE;
+      const exportCanvas = document.createElement('canvas');
+      exportCanvas.width = exportW;
+      exportCanvas.height = exportH;
+      renderBoardToCanvas(exportCanvas, {
+        x: view.x,
+        y: view.y,
+        zoom: view.zoom * EXPORT_SCALE
+      });
+
+      if (choice === 'png') {
+        const dataUrl = exportCanvas.toDataURL('image/png');
+        const link = document.createElement('a');
+        link.download = 'whiteboard.png';
+        link.href = dataUrl;
+        link.click();
+      } else if (choice === 'pdf') {
+        const dataUrl = exportCanvas.toDataURL('image/png');
+        const pdf = new jsPDF({
+          orientation: exportW >= exportH ? 'landscape' : 'portrait',
+          unit: 'px',
+          format: [exportW, exportH]
+        });
+        pdf.addImage(dataUrl, 'PNG', 0, 0, exportW, exportH);
+        pdf.save('whiteboard.pdf');
+      }
+    } finally {
+      removeListeners();
+    }
   };
 
   // Add invite button functionality (if exists)
   const inviteBtn = document.getElementById('invite-btn');
   if (inviteBtn) {
     inviteBtn.onclick = async () => {
-      const link = getShareableLink();
-
-      // The modal asks for an updated link when the permission radio changes.
-      const handleLinkUpdate = (e) => {
-        const { permission } = e.detail;
-        const newLink = getShareableLink(permission);
-        window.dispatchEvent(new CustomEvent('invite-link-updated', { detail: { link: newLink } }));
-      };
-      window.addEventListener('update-invite-link', handleLinkUpdate);
-
-      await showInviteModal(link, isEncrypted);
-
-      window.removeEventListener('update-invite-link', handleLinkUpdate);
+      await showInviteModal((permission) => getShareableLink(permission), isEncrypted);
     };
   }
 
@@ -461,20 +601,14 @@ async function main() {
     );
   });
 
-  // Listen for board changes to update empty state
+  // Listen for board changes
   window.addEventListener('board-change', (e) => {
-    updateEmptyState(e.detail.itemCount === 0);
     if (role === 'view' && e.detail.itemCount === 0) updateStatus('Waiting for editor');
   });
 
   updateStatus(isEncrypted ? 'Encrypted' : 'Connected');
 
-  // Setup toggle panel functionality
-  const togglePanelBtn = document.getElementById('toggle-panel');
-  const sidePanel = document.getElementById('side-panel');
-  const canvasArea = document.getElementById('canvas-area');
-
-  // Resize canvas function - defined early so it can be used by panel toggle
+  // Resize canvas function
   function resizeCanvas() {
     const container = document.getElementById('canvas-container');
     const newWidth = container.clientWidth;
@@ -486,14 +620,6 @@ async function main() {
       canvas.height = newHeight;
       drawingController.redraw();
     }
-  }
-
-  if (togglePanelBtn && sidePanel && canvasArea) {
-    togglePanelBtn.onclick = () => {
-      sidePanel.classList.toggle('hidden');
-      canvasArea.classList.toggle('panel-hidden');
-      togglePanelBtn.classList.toggle('active');
-    };
   }
 
   // Setup keyboard shortcuts
@@ -571,6 +697,12 @@ function saveCurrentToolSettings() {
     }
   }
 
+  // Save stroke style for tools that use it
+  if ('strokeStyle' in settings) {
+    const activeStyleBtn = document.querySelector('.style-btn.active');
+    settings.strokeStyle = activeStyleBtn?.dataset.style ?? drawingController.getStrokeStyle();
+  }
+
   // Save text settings
   if ('fontSize' in settings) {
     const fontSizeInput = document.getElementById('font-size');
@@ -600,6 +732,14 @@ function loadToolSettings(toolName) {
       drawingController.setStrokeWidth(settings.strokeWidth);
       updateStrokePresetHighlight(settings.strokeWidth);
     }
+  }
+
+  // Load stroke style
+  if ('strokeStyle' in settings) {
+    drawingController.setStrokeStyle(settings.strokeStyle);
+    document.querySelectorAll('.style-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.style === settings.strokeStyle);
+    });
   }
 
   // Load fill settings
@@ -646,6 +786,46 @@ function setStrokeWidth(width) {
   }
 }
 
+// ============ New-shape default option helpers ============
+// These helpers ONLY set the default for the next shape drawn.
+// Per-shape editing is exclusively in the ⚙ gear popup (showShapeSettingsPopup / updateShapeProperty).
+
+function applyStrokeWidth(width) {
+  setStrokeWidth(width);
+}
+
+function applyStrokeStyle(style) {
+  drawingController.setStrokeStyle(style);
+}
+
+/**
+ * @param {boolean} enabled
+ * @param {string} currentColor - current value of the fill-color input
+ */
+function applyFillEnabled(enabled, currentColor) {
+  drawingController.setFillEnabled(enabled);
+  saveCurrentToolSettings();
+}
+
+function applyFillColor(color) {
+  drawingController.setFillColor(color);
+  saveCurrentToolSettings();
+}
+
+function applyFontSize(size) {
+  drawingController.setFontSize(size);
+  saveCurrentToolSettings();
+}
+
+function applyFontFamily(family) {
+  drawingController.setFontFamily(family);
+  saveCurrentToolSettings();
+}
+
+function applyArrowHeads(value) {
+  drawingController.setArrowHeads(value);
+}
+
 function updateStrokePresetHighlight(width) {
   document.querySelectorAll('.preset-btn').forEach(btn => {
     btn.classList.toggle('active', parseInt(btn.dataset.width) === width);
@@ -674,7 +854,7 @@ function updateOptionsVisibility(toolName) {
 
   // Show/hide stroke options (hide for select, eraser-shape, and the laser
   // pointer — the laser uses a fixed width, so stroke controls are meaningless).
-  const hasStroke = !['select', 'eraser-shape', 'laser', 'sticky', 'connector'].includes(toolName);
+  const hasStroke = !['select', 'eraser-shape', 'laser', 'sticky'].includes(toolName);
   const strokeOption = document.querySelector('.stroke-option');
   if (strokeOption) {
     strokeOption.style.display = hasStroke ? 'flex' : 'none';
@@ -693,10 +873,17 @@ function updateOptionsVisibility(toolName) {
     optionDivider.style.display = (hasStroke && hasFill) ? 'block' : 'none';
   }
 
+  // Show/hide arrowheads control — only for arrow and connector tools
+  const isArrowTool = toolName === 'arrow' || toolName === 'connector';
+  const arrowOptions = document.querySelector('.arrow-options');
+  if (arrowOptions) {
+    arrowOptions.style.display = isArrowTool ? 'flex' : 'none';
+  }
+
   // Hide entire drawing-options container when no options are visible
   const drawingOptions = document.getElementById('drawing-options');
   if (drawingOptions) {
-    const hasAnyOptions = hasStroke || hasFill || isTextTool || isSticky;
+    const hasAnyOptions = hasStroke || hasFill || isTextTool || isSticky || isArrowTool;
     drawingOptions.style.display = hasAnyOptions ? 'flex' : 'none';
   }
 }
@@ -750,13 +937,6 @@ function updateStatus(status) {
   }
 }
 
-function updateEmptyState(boardIsEmpty) {
-  const emptyState = document.getElementById('empty-state');
-  if (emptyState) {
-    emptyState.style.display = boardIsEmpty ? 'flex' : 'none';
-  }
-}
-
 function updateEncryptionIndicator(isEncrypted, isOwner = false) {
   const indicator = document.getElementById('encryption-indicator');
   if (indicator) {
@@ -768,11 +948,11 @@ function updateEncryptionIndicator(isEncrypted, isOwner = false) {
   const changePasswordBtn = document.getElementById('change-password');
 
   if (addEncryptionBtn) {
-    addEncryptionBtn.style.display = isEncrypted ? 'none' : 'block';
+    addEncryptionBtn.style.display = isEncrypted ? 'none' : 'inline-flex';
   }
   if (changePasswordBtn) {
     // Change Password only visible to encrypted-room owners
-    changePasswordBtn.style.display = (isEncrypted && (isOwner || document.body.dataset.role === 'owner')) ? 'block' : 'none';
+    changePasswordBtn.style.display = (isEncrypted && (isOwner || document.body.dataset.role === 'owner')) ? 'inline-flex' : 'none';
   }
 }
 
@@ -784,7 +964,7 @@ function setupKeyboardShortcuts() {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
     // Undo: Ctrl+Z (or Cmd+Z on Mac)
-    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
       e.preventDefault();
       if (!readOnly && undoManagerInstance) {
         undo();
@@ -794,7 +974,7 @@ function setupKeyboardShortcuts() {
     }
 
     // Redo: Ctrl+Y or Ctrl+Shift+Z (or Cmd variants on Mac)
-    if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+    if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) {
       e.preventDefault();
       if (!readOnly && undoManagerInstance) {
         redo();
@@ -932,16 +1112,29 @@ function setupZoomPanControls() {
     }
   }, true);
 
-  // Scroll wheel zoom (centered on cursor)
+  // Scroll wheel zoom (centered on cursor), with sticky-note scroll interception.
+  // When the cursor is over an overflowing sticky note, the wheel scrolls the note
+  // instead of zooming the canvas. Over empty canvas or a non-overflowing note the
+  // normal zoom behavior applies.
   canvas.addEventListener('wheel', (e) => {
-    e.preventDefault();
-
     const rect = canvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
-    const worldBefore = screenToWorld(mouseX, mouseY);
+    // Compute world coordinates BEFORE any zoom change so handleStickyScroll
+    // receives the correct world position.
+    const worldPos = screenToWorld(mouseX, mouseY);
 
+    // Let an overflowing sticky note consume the wheel event.
+    if (drawingController.handleStickyScroll(worldPos.x, worldPos.y, e.deltaY)) {
+      e.preventDefault();
+      return;
+    }
+
+    // Default: zoom the canvas centered on the cursor.
+    e.preventDefault();
+
+    const worldBefore = worldPos; // already computed above
     const viewport = getViewport();
     const zoomFactor = e.deltaY > 0 ? 1 / ZOOM_WHEEL_STEP : ZOOM_WHEEL_STEP;
     const newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, viewport.zoom * zoomFactor));
@@ -959,6 +1152,10 @@ function setupZoomPanControls() {
   const zoomInBtn = document.getElementById('zoom-in');
   const zoomOutBtn = document.getElementById('zoom-out');
   const zoomFitBtn = document.getElementById('zoom-fit');
+
+  // Reliable affordance for the shortcuts panel (the `?` key was flaky across setups).
+  const helpBtn = document.getElementById('help-btn');
+  if (helpBtn) helpBtn.addEventListener('click', () => showKeyboardShortcuts());
 
   if (zoomInBtn) {
     zoomInBtn.addEventListener('click', () => {

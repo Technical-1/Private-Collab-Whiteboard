@@ -68,11 +68,45 @@
       </button>
     </div>
     <div class="header-right">
-      <button id="toggle-panel" class="icon-btn" title="Toggle Panel">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="3" y="3" width="18" height="18" rx="2"/>
-          <path d="M9 3v18"/>
+      <button id="invite-btn" class="header-invite-btn" title="Invite people">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+          <circle cx="9" cy="7" r="4"/>
+          <line x1="19" y1="8" x2="19" y2="14"/>
+          <line x1="22" y1="11" x2="16" y2="11"/>
         </svg>
+        <span>Invite</span>
+      </button>
+      <button id="add-encryption" class="header-action-btn" title="Encrypt">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+          <path d="M7 11V7a5 5 0 0 1 9.9-1"/>
+        </svg>
+        <span>Encrypt</span>
+      </button>
+      <button id="change-password" class="header-action-btn u-hidden" title="Change password">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+        <span>Change password</span>
+      </button>
+      <button id="save-image" class="header-action-btn" title="Save image">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        <span>Save</span>
+      </button>
+      <button id="clear-board" class="header-action-btn" title="Clear board">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <polyline points="3 6 5 6 21 6"/>
+          <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
+          <path d="M10 11v6M14 11v6"/>
+          <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
+        </svg>
+        <span>Clear</span>
       </button>
     </div>
   </header>
@@ -239,115 +273,27 @@
         <button class="sticky-color" data-color="#cfe8ff" title="Blue"></button>
       </div>
     </div>
+    <div class="option-section arrow-options">
+      <div class="option-label">Heads</div>
+      <div class="arrowhead-group">
+        <button class="arrowhead-btn active" data-heads="end" title="End only">&#x2192;</button>
+        <button class="arrowhead-btn" data-heads="both" title="Both ends">&#x2194;</button>
+        <button class="arrowhead-btn" data-heads="none" title="None">&#x2014;</button>
+      </div>
+    </div>
   </div>
-
-  <!-- Side Panel (collapsible) -->
-  <aside id="side-panel" class="side-panel">
-    <div class="panel-section">
-      <div class="panel-header">
-        <h3>Users</h3>
-        <span id="user-count" class="user-count-badge">0</span>
-      </div>
-      <div id="users" class="users-list"></div>
-    </div>
-
-    <div class="panel-section color-section">
-      <div class="panel-header">
-        <h3>Your Color</h3>
-      </div>
-      <div class="color-picker-row">
-        <input type="color" id="user-color" value="#6366f1">
-        <span class="color-hint">Click to change</span>
-      </div>
-    </div>
-
-    <div class="panel-section actions-section">
-      <div class="panel-header">
-        <h3>Actions</h3>
-      </div>
-      <div class="action-buttons">
-        <button id="clear-board" class="action-btn">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
-          </svg>
-          Clear Board
-        </button>
-        <button id="save-image" class="action-btn">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-            <polyline points="7 10 12 15 17 10"/>
-            <line x1="12" y1="15" x2="12" y2="3"/>
-          </svg>
-          Save Image
-        </button>
-        <button id="extract-text" class="action-btn">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
-            <polyline points="14 2 14 8 20 8"/>
-            <line x1="16" y1="13" x2="8" y2="13"/>
-            <line x1="16" y1="17" x2="8" y2="17"/>
-          </svg>
-          Extract Text
-        </button>
-      </div>
-    </div>
-
-    <div class="panel-section share-section">
-      <div class="panel-header">
-        <h3>Share Room</h3>
-      </div>
-      <div class="share-input-group">
-        <input type="text" id="share-link" readonly>
-        <button id="copy-link" class="copy-btn" title="Copy Link">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="9" y="9" width="13" height="13" rx="2"/>
-            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-          </svg>
-        </button>
-      </div>
-      <div id="password-controls" class="u-hidden">
-        <p class="share-hint">🔒 This link includes the room password — anyone with it can access the room.</p>
-      </div>
-      <button id="invite-btn" class="action-btn primary-action">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-          <circle cx="8.5" cy="7" r="4"/>
-          <line x1="20" y1="8" x2="20" y2="14"/>
-          <line x1="23" y1="11" x2="17" y2="11"/>
-        </svg>
-        Invite People
-      </button>
-      <button id="add-encryption" class="action-btn secondary">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
-          <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
-        </svg>
-        Add Encryption
-      </button>
-      <button id="change-password" class="action-btn secondary u-hidden">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
-        </svg>
-        Change Password
-      </button>
-    </div>
-  </aside>
 
   <!-- Canvas Area -->
   <main id="canvas-area">
+    <div class="top-right-cluster">
+      <!-- Live presence (top-right) -->
+      <div id="presence" class="presence-cluster"></div>
+    </div>
     <div id="canvas-container">
       <!-- Loading Overlay -->
       <div id="loading-overlay" class="loading-overlay">
         <div class="loading-spinner"></div>
         <span class="loading-text">Connecting to room...</span>
-      </div>
-      <!-- Empty State (shown when board is empty) -->
-      <div id="empty-state" class="empty-state u-hidden">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
-          <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/>
-        </svg>
-        <p>Start drawing or select a tool from the toolbar</p>
-        <span class="empty-hint">Press <kbd>?</kbd> for keyboard shortcuts</span>
       </div>
       <canvas id="board"></canvas>
       <div id="cursors"></div>
@@ -374,6 +320,14 @@
       <button id="zoom-fit" class="zoom-btn" title="Fit All">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/>
+        </svg>
+      </button>
+      <div class="zoom-divider"></div>
+      <button id="help-btn" class="zoom-btn" title="Keyboard shortcuts">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"/>
+          <path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/>
+          <line x1="12" y1="17" x2="12.01" y2="17"/>
         </svg>
       </button>
     </div>

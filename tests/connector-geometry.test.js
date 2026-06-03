@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveAnchor, nearestAnchors, isDangling, danglingConnectorIndices } from '../js/connector-geometry.js';
+import { resolveAnchor, nearestAnchors, isDangling, danglingConnectorIndices, edgeAnchorPoints, nearestAnchorToPoint } from '../js/connector-geometry.js';
 
 const bbox = { x: 0, y: 0, width: 10, height: 20 };
 
@@ -73,5 +73,27 @@ describe('danglingConnectorIndices', () => {
       { id: 'c', tool: 'connector', fromId: 'a', toId: 'b' },
     ];
     expect(danglingConnectorIndices(items)).toEqual([]);
+  });
+});
+
+describe('edgeAnchorPoints', () => {
+  it('returns the four edge midpoints of a bbox', () => {
+    const pts = edgeAnchorPoints({ x: 0, y: 0, width: 10, height: 20 });
+    expect(pts).toEqual([
+      { x: 5, y: 0 },   // n
+      { x: 10, y: 10 }, // e
+      { x: 5, y: 20 },  // s
+      { x: 0, y: 10 },  // w
+    ]);
+  });
+});
+
+describe('nearestAnchorToPoint', () => {
+  const bbox = { x: 0, y: 0, width: 10, height: 10 }; // anchors: n(5,0) e(10,5) s(5,10) w(0,5)
+  it('picks the edge anchor closest to the point', () => {
+    expect(nearestAnchorToPoint(bbox, 5, -50)).toEqual({ x: 5, y: 0 });   // far north -> n
+    expect(nearestAnchorToPoint(bbox, 50, 5)).toEqual({ x: 10, y: 5 });   // far east  -> e
+    expect(nearestAnchorToPoint(bbox, 5, 50)).toEqual({ x: 5, y: 10 });   // far south -> s
+    expect(nearestAnchorToPoint(bbox, -50, 5)).toEqual({ x: 0, y: 5 });   // far west  -> w
   });
 });

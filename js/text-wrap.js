@@ -2,7 +2,6 @@
 // Words longer than maxWidth are hard-broken character-by-character.
 // Note: hard newlines are treated as ordinary whitespace (split on /\s+/), so
 // callers that need to preserve `\n` must split on it and call wrapText per line.
-// (The sticky-note editor is a single-line <input>, so notes carry no newlines.)
 export function wrapText(measure, text, maxWidth) {
   if (!text || typeof text !== 'string') return [];
   const lines = [];
@@ -22,4 +21,33 @@ export function wrapText(measure, text, maxWidth) {
     }
   }
   return lines;
+}
+
+// Like wrapText, but newline-aware: splits on '\n' first, wraps each segment,
+// and preserves blank lines (an empty segment yields one empty line). Used by
+// sticky notes, which are now multi-line.
+export function wrapMultiline(measure, text, maxWidth) {
+  if (!text || typeof text !== 'string') return [];
+  const out = [];
+  for (const segment of text.split('\n')) {
+    if (segment === '') { out.push(''); continue; }
+    const wrapped = wrapText(measure, segment, maxWidth);
+    if (wrapped.length === 0) out.push('');
+    else out.push(...wrapped);
+  }
+  return out;
+}
+
+/**
+ * Returns the maximum scrollable pixels for a sticky note's text area.
+ * When the wrapped text fits within innerHeight, returns 0 (no scroll needed).
+ * When content overflows, returns the positive excess in pixels.
+ *
+ * @param {number} lineCount   - number of wrapped lines
+ * @param {number} lineStep    - vertical distance per line in pixels (fs * 1.3)
+ * @param {number} innerHeight - available height for text (height - pad*2)
+ * @returns {number} max scroll offset in pixels (>= 0)
+ */
+export function stickyMaxScroll(lineCount, lineStep, innerHeight) {
+  return Math.max(0, lineCount * lineStep - innerHeight);
 }

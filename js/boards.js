@@ -1,7 +1,7 @@
 import * as Y from 'yjs';
 import { updateCurrentBoard } from './awareness.js';
 import { isInReadOnlyMode } from './drawing.js';
-import { showAlert } from './modal.js';
+import { showAlert, showConfirm } from './modal.js';
 
 let boards = null;
 let awareness = null;
@@ -37,6 +37,7 @@ export function setupBoardManager(boardsMap, awarenessInstance, switchCallback) 
     createBoard,
     switchBoard,
     clearBoard,
+    deleteBoard,
     getCurrentBoard: () => currentBoard,
     setBoardsContainer
   };
@@ -86,6 +87,76 @@ function clearBoard() {
   }
 }
 
+function deleteBoard(name) {
+  if (!canMutate()) return;
+  if (name === 'default') return;
+  if (!boards.has(name)) return;
+
+  boards.delete(name);
+
+  // If the deleted board was active, fall back to default
+  if (currentBoard === name) {
+    currentBoard = 'default';
+    updateCurrentBoard(awareness, 'default');
+    if (onBoardSwitch) onBoardSwitch('default');
+  }
+  // boards.observe(renderBoardsList) fires for local deletes — no explicit call needed
+}
+
+// Cleanup fn for whichever context menu is currently open (null when none)
+let activeCleanup = null;
+
+function showBoardContextMenu(x, y, name) {
+  // Tear down any previously-open menu and its document listeners
+  if (activeCleanup) activeCleanup();
+
+  const menu = document.createElement('div');
+  menu.className = 'board-context-menu';
+  menu.style.left = x + 'px';
+  menu.style.top = y + 'px';
+
+  const deleteBtn = document.createElement('button');
+  deleteBtn.className = 'board-context-menu-item board-context-menu-danger';
+  deleteBtn.textContent = 'Delete board';
+
+  // Single teardown for ALL dismissal paths
+  function cleanup() {
+    document.removeEventListener('mousedown', onOutsideClick, true);
+    document.removeEventListener('keydown', onEscape, true);
+    menu.remove();
+    if (activeCleanup === cleanup) activeCleanup = null;
+  }
+
+  const onOutsideClick = (e) => {
+    if (!menu.contains(e.target)) cleanup();
+  };
+
+  const onEscape = (e) => {
+    if (e.key === 'Escape') cleanup();
+  };
+
+  deleteBtn.addEventListener('click', async () => {
+    cleanup(); // close menu + remove listeners before awaiting
+    const confirmed = await showConfirm(
+      'Delete board?',
+      `Delete "${name}" and its drawings? You can undo with Ctrl+Z.`,
+      'Delete',
+      'Cancel',
+      true
+    );
+    if (confirmed) {
+      deleteBoard(name);
+    }
+  });
+
+  menu.appendChild(deleteBtn);
+  document.body.appendChild(menu);
+  activeCleanup = cleanup;
+
+  document.addEventListener('mousedown', onOutsideClick, true);
+  document.addEventListener('keydown', onEscape, true);
+}
+
 function renderBoardsList() {
   if (!boardsContainer || !boards) return;
 
@@ -108,6 +179,12 @@ function renderBoardsList() {
     button.textContent = name;
     button.className = name === currentBoard ? 'board-btn active' : 'board-btn';
     button.addEventListener('click', () => switchBoard(name));
+    if (name !== 'default') {
+      button.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        showBoardContextMenu(e.clientX, e.clientY, name);
+      });
+    }
     boardsContainer.appendChild(button);
   });
 }

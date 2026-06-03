@@ -2,7 +2,7 @@ import * as Y from 'yjs';
 import { generateId, safeColor, safeNumber, safeToolName } from './utils.js';
 import { sanitizeShape, clampPoints, safeStrokeWidth } from './shape-schema.js';
 import { arrowHeadPoints, polygonPoints, pointInPolygon, dashPattern, textBounds, isDegenerateShape, buildShapeIndex } from './draw-geometry.js';
-import { wrapText } from './text-wrap.js';
+import { wrapMultiline, stickyMaxScroll } from './text-wrap.js';
 import {
   updateCursorPosition,
   clearCursorPosition,
@@ -17,7 +17,7 @@ import {
 } from './awareness.js';
 import { pruneTrail, MAX_TRAIL_AGE_MS } from './laser-trail.js';
 import { showAlert } from './modal.js';
-import { resolveAnchor, nearestAnchors, danglingConnectorIndices } from './connector-geometry.js';
+import { resolveAnchor, nearestAnchors, danglingConnectorIndices, edgeAnchorPoints, nearestAnchorToPoint } from './connector-geometry.js';
 import { ZOOM_MIN, ZOOM_MAX, HIT_TEST_THRESHOLD } from './config.js';
 
 let canvas = null;
@@ -107,6 +107,7 @@ function canMutate() {
 }
 
 let drawing = false;
+let erasingShapes = false; // true while dragging with eraser-shape tool
 let startX = 0;
 let startY = 0;
 let currentTool = 'select';
@@ -127,6 +128,10 @@ let observedBoardArray = null;
 // Non-null ONLY during a synchronous redrawCanvas pass. findShapeById prefers it
 // to avoid O(n) board.toArray() scans while resolving connector endpoints.
 let shapeIndex = null;
+
+// Local-only scroll offsets for overflowing sticky notes (shapeId → scrollY px).
+// Never written to the Y.js CRDT; ephemeral per-viewer state.
+const stickyScroll = new Map();
 
 // Viewport state for infinite canvas
 let viewport = {
@@ -234,6 +239,7 @@ let shapeControlsContainer = null;
 let editingTextId = null;
 let textInput = null;
 let creatingTextAt = null; // {x, y} position for new text being created
+let creatingTextWorldFont = 20; // world-space font size frozen at creation start
 
 // Event listener tracking for cleanup
 const eventListeners = [];
@@ -399,6 +405,9 @@ export function setupDrawing(canvasEl, boardsMap, awarenessInstance, getBoardFn)
     subscribeToBoard,
     setStrokeWidth: (width) => { strokeWidth = width; },
     setStrokeStyle: (style) => { currentStrokeStyle = style; },
+    getStrokeStyle: () => currentStrokeStyle,
+    setArrowHeads: (value) => { currentArrowHeads = value; },
+    getArrowHeads: () => currentArrowHeads,
     setStickyColor: (c) => { currentStickyColor = c; },
     setFillEnabled: (enabled) => { fillEnabled = enabled; },
     setFillColor: (color) => { fillColor = color; },
@@ -406,7 +415,66 @@ export function setupDrawing(canvasEl, boardsMap, awarenessInstance, getBoardFn)
     setFontFamily: (family) => { fontFamily = family; },
     getSelectedIds: () => selectedIds,
     clearSelection,
-    cleanup // Allow external cleanup calls
+    cleanup, // Allow external cleanup calls
+    /**
+     * Attempt to scroll an overflowing sticky note under the given world coordinates.
+     * Called from the wheel handler in app.js BEFORE the zoom logic runs.
+     *
+     * Returns true if the wheel was consumed (sticky had overflow and scroll was applied),
+     * false if the wheel should fall through to the normal canvas zoom.
+     *
+     * Scroll is LOCAL ONLY — never written to the CRDT.
+     *
+     * @param {number} worldX  - cursor world X at the time of the wheel event
+     * @param {number} worldY  - cursor world Y
+     * @param {number} deltaY  - e.deltaY from the WheelEvent (positive = scroll down)
+     * @returns {boolean}
+     */
+    handleStickyScroll(worldX, worldY, deltaY) {
+      const boardName = getCurrentBoard();
+      const board = boards.get(boardName);
+      if (!board) return false;
+
+      // Find the top-most sticky whose bounding box contains the world point.
+      const items = board.toArray();
+      let target = null;
+      for (let i = items.length - 1; i >= 0; i--) {
+        const item = items[i];
+        if (item.tool !== 'sticky') continue;
+        const b = getShapeBounds(item);
+        if (worldX >= b.x && worldX <= b.x + b.width &&
+            worldY >= b.y && worldY <= b.y + b.height) {
+          target = item;
+          break;
+        }
+      }
+      if (!target) return false;
+
+      // Compute the wrapped line count with the same parameters drawSticky uses.
+      const pad = 12;
+      const fs = target.fontSize || 16;
+      const lineStep = fs * 1.3;
+      const b = getShapeBounds(target);
+      const innerHeight = b.height - pad * 2;
+      const text = target.text || '';
+      const capped = text.length > 4000 ? text.slice(0, 4000) : text;
+
+      // Measure with the sticky's typeface; save/restore so this can't leak ctx.font.
+      ctx.save();
+      ctx.font = `${fs}px Inter, sans-serif`;
+      const lines = wrapMultiline((s) => ctx.measureText(s).width, capped, b.width - pad * 2);
+      ctx.restore();
+      const max = stickyMaxScroll(lines.length, lineStep, innerHeight);
+
+      if (max <= 0) return false; // content fits — pass the wheel to canvas zoom
+
+      const cur = stickyScroll.get(target.id) || 0;
+      const next = Math.max(0, Math.min(cur + deltaY, max));
+      if (next === cur) return true; // consumed the wheel, but nothing to repaint
+      stickyScroll.set(target.id, next);
+      redrawCanvas();
+      return true;
+    }
   };
 }
 
@@ -479,8 +547,9 @@ function handleMouseDown(e) {
   // Handle shape eraser
   if (currentTool === 'eraser-shape') {
     if (!canMutate()) return; // Block in read-only mode
+    erasingShapes = true;
     const shape = findShapeAtPoint(startX, startY);
-    if (shape) {
+    if (shape && !shape.locked) {
       deleteShape(shape.id);
     }
     return;
@@ -493,16 +562,19 @@ function handleMouseDown(e) {
     return;
   }
 
-  // Handle sticky note - click to place a default-size note centered on the cursor
+  // Handle sticky note - click to place a default-size note centered on the cursor.
+  // screenSize is the desired on-screen pixel size; dividing by zoom gives world units
+  // so the rendered size (worldSize * zoom) equals screenSize at any zoom level.
   if (currentTool === 'sticky') {
     if (!canMutate()) return; // Block in read-only mode
-    const size = 180;
+    const screenSize = 180;
+    const size = screenSize / viewport.zoom;
     addDrawing({
       tool: 'sticky',
       startX: startX - size / 2,
       startY: startY - size / 2,
       width: size, height: size,
-      text: '', fillColor: currentStickyColor, fontSize: 16,
+      text: '', fillColor: currentStickyColor, fontSize: 16 / viewport.zoom,
     });
     return;
   }
@@ -533,6 +605,8 @@ function handleMouseDown(e) {
 }
 
 function handleMouseUp(e) {
+  erasingShapes = false;
+
   const rect = canvas.getBoundingClientRect();
   const screenX = e.clientX - rect.left;
   const screenY = e.clientY - rect.top;
@@ -579,7 +653,7 @@ function handleMouseUp(e) {
             tool: 'connector',
             fromId: connectorFromId, toId: target.id,
             fromAnchor: from, toAnchor: to,
-            strokeWidth, strokeStyle: 'solid', arrowHeads: 'end',
+            strokeWidth, strokeStyle: currentStrokeStyle, arrowHeads: currentArrowHeads,
           });
         }
       }
@@ -699,18 +773,28 @@ function handleMouseMove(e) {
     return;
   }
 
+  // Drag-erase: erase every non-locked shape the cursor passes over.
+  if (erasingShapes && currentTool === 'eraser-shape') {
+    const s = findShapeAtPoint(x, y);
+    if (s && !s.locked) {
+      deleteShape(s.id);
+    }
+    redrawCanvas();
+    return;
+  }
+
   // Connector creation preview: rubber-band arrow from the source shape to the cursor.
   if (currentTool === 'connector') {
     if (drawing && connectorFromId) {
       const fromShape = findShapeById(connectorFromId);
       if (fromShape) {
         redrawCanvas();
-        const p1 = resolveAnchor(getShapeBounds(fromShape), 'c');
+        const p1 = nearestAnchorToPoint(getShapeBounds(fromShape), x, y);
         ctx.save();
         ctx.scale(viewport.zoom, viewport.zoom);
         ctx.translate(-viewport.x, -viewport.y);
         ctx.globalAlpha = 0.6;
-        drawArrow(p1.x, p1.y, x, y, '#6366f1', strokeWidth, 'solid', 'end');
+        drawArrow(p1.x, p1.y, x, y, '#6366f1', strokeWidth, currentStrokeStyle, currentArrowHeads);
         ctx.restore();
       }
     }
@@ -824,6 +908,7 @@ function handleMouseMove(e) {
 }
 
 function handleMouseLeave() {
+  erasingShapes = false;
   if (laserTrail.length) { laserTrail = []; clearLaser(); }
   clearCursorPosition();
   // Only clear hover, keep selection and its controls
@@ -1008,6 +1093,7 @@ function handleTouchEnd(e) {
     touchState.active = false;
 
     // Don't start a new drawing, just reset
+    erasingShapes = false;
     drawing = false;
     freehandPoints = [];
     clearCurrentDrawing(); // Clear live preview for other users
@@ -1344,6 +1430,45 @@ function showShapeSettingsPopup(shape, bounds) {
     `;
   }
 
+  // Stroke style (solid / dashed / dotted) for shapes that have a stroke
+  if (hasStroke && !isText) {
+    const ss = shape.strokeStyle || 'solid';
+    html += `
+      <div class="popup-row">
+        <label>Stroke</label>
+        <select id="shape-stroke-style">
+          <option value="solid"  ${ss === 'solid'  ? 'selected' : ''}>Solid</option>
+          <option value="dashed" ${ss === 'dashed' ? 'selected' : ''}>Dashed</option>
+          <option value="dotted" ${ss === 'dotted' ? 'selected' : ''}>Dotted</option>
+        </select>
+      </div>
+    `;
+  }
+
+  // Arrowheads (for arrow and connector tools)
+  if (shape.tool === 'arrow' || shape.tool === 'connector') {
+    const ah = shape.arrowHeads || 'end';
+    html += `
+      <div class="popup-row">
+        <label>Arrowheads</label>
+        <select id="shape-arrowheads">
+          <option value="end"  ${ah === 'end'  ? 'selected' : ''}>End only</option>
+          <option value="both" ${ah === 'both' ? 'selected' : ''}>Both ends</option>
+          <option value="none" ${ah === 'none' ? 'selected' : ''}>None</option>
+        </select>
+      </div>
+    `;
+  }
+
+  // Reverse direction (connector only)
+  if (shape.tool === 'connector') {
+    html += `
+      <div class="popup-row">
+        <button class="popup-action-btn" id="connector-reverse">Reverse direction</button>
+      </div>
+    `;
+  }
+
   // Fill controls (for rect and circle)
   if (hasFill) {
     html += `
@@ -1410,7 +1535,7 @@ function showShapeSettingsPopup(shape, bounds) {
   // Disable all inputs if shape is locked
   if (shape.locked) {
     popup.classList.add('locked');
-    const inputs = popup.querySelectorAll('input, select');
+    const inputs = popup.querySelectorAll('input, select, button');
     inputs.forEach(input => {
       input.disabled = true;
     });
@@ -1502,6 +1627,31 @@ function showShapeSettingsPopup(shape, bounds) {
   if (fontFamilySelect) {
     fontFamilySelect.addEventListener('change', (e) => {
       updateShapeProperty(shape.id, 'fontFamily', e.target.value);
+    });
+  }
+
+  // Stroke style handler
+  const strokeStyleSelect = popup.querySelector('#shape-stroke-style');
+  if (strokeStyleSelect) {
+    strokeStyleSelect.addEventListener('change', (e) => {
+      updateShapeProperty(shape.id, 'strokeStyle', e.target.value);
+    });
+  }
+
+  // Arrowheads handler
+  const arrowHeadsSelect = popup.querySelector('#shape-arrowheads');
+  if (arrowHeadsSelect) {
+    arrowHeadsSelect.addEventListener('change', (e) => {
+      updateShapeProperty(shape.id, 'arrowHeads', e.target.value);
+    });
+  }
+
+  // Reverse connector direction handler
+  const reverseBtn = popup.querySelector('#connector-reverse');
+  if (reverseBtn) {
+    reverseBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      reverseConnector(shape.id);
     });
   }
 
@@ -1620,17 +1770,24 @@ function startTextCreation(worldX, worldY) {
 
   creatingTextAt = { x: worldX, y: worldY };
 
+  // Freeze the world-space font at creation time. The module `fontSize` slider is
+  // the desired SCREEN size; dividing by current zoom gives world units so that
+  // rendered size (worldFont * zoom) equals the screen target at any zoom level.
+  creatingTextWorldFont = fontSize / viewport.zoom;
+
   const localState = awareness?.getLocalState();
   const color = localState?.user?.color || '#000000';
 
   // Convert world coordinates to screen coordinates for input positioning
   const screenPos = worldToScreen(worldX, worldY);
-  const scaledFontSize = fontSize * viewport.zoom;
+  // The input should display at the screen-target size (fontSize px) — this
+  // matches what the final rendered shape will look like on screen.
+  const inputFontSize = fontSize;
 
   // Clamp position to keep input within container bounds
   const containerRect = container.getBoundingClientRect();
   const inputWidth = 200; // Approximate width for clamping
-  const inputHeight = scaledFontSize + 20; // Approximate height
+  const inputHeight = inputFontSize + 20; // Approximate height
   const margin = 10;
 
   const clampedX = Math.min(screenPos.x, containerRect.width - inputWidth - margin);
@@ -1643,20 +1800,21 @@ function startTextCreation(worldX, worldY) {
   textInput.style.position = 'absolute';
   textInput.style.left = `${Math.max(margin, clampedX)}px`;
   textInput.style.top = `${clampedY}px`;
-  textInput.style.fontSize = `${scaledFontSize}px`;
+  textInput.style.fontSize = `${inputFontSize}px`;
   textInput.style.fontFamily = fontFamily;
   textInput.style.maxWidth = `${containerRect.width - margin * 2}px`;
   textInput.style.transform = 'translateY(-100%)'; // Position above click point
 
   // Live preview as user types
   textInput.addEventListener('input', () => {
-    // Broadcast text being typed for live preview
+    // Broadcast text being typed for live preview using the frozen world font so
+    // remote peers (who render in world space) see it at the correct size.
     updateCurrentDrawing({
       tool: 'text',
       x: worldX,
       y: worldY,
       text: textInput.value,
-      fontSize: fontSize,
+      fontSize: creatingTextWorldFont,
       fontFamily: fontFamily
     });
     redrawCanvas();
@@ -1694,12 +1852,14 @@ function finishTextCreation() {
 
   const text = textInput.value;
   if (text && text.trim()) {
+    // Store the world-space font size frozen at creation time so the shape renders
+    // at the intended screen size at any zoom level.
     addDrawing({
       tool: 'text',
       x: creatingTextAt.x,
       y: creatingTextAt.y,
       text: text,
-      fontSize: fontSize,
+      fontSize: creatingTextWorldFont,
       fontFamily: fontFamily
     });
   }
@@ -1760,34 +1920,46 @@ function startTextEditing(shape) {
   editingTextId = shape.id;
   broadcastEditingText(shape.id);
 
-  // Convert world coordinates to screen coordinates for input positioning
-  // Sticky notes anchor on their top-left (startX/startY); text shapes use x/y.
-  const anchorX = shape.tool === 'sticky' ? shape.startX : shape.x;
-  const anchorY = shape.tool === 'sticky' ? shape.startY : shape.y;
-  const screenPos = worldToScreen(anchorX, anchorY);
-  const scaledFontSize = (shape.fontSize || 20) * viewport.zoom;
+  const isSticky = shape.tool === 'sticky';
+  const screenBounds = isSticky
+    ? (() => {
+        const b = getShapeBounds(shape);
+        const tl = worldToScreen(b.x, b.y);
+        const br = worldToScreen(b.x + b.width, b.y + b.height);
+        return { left: tl.x, top: tl.y, width: br.x - tl.x, height: br.y - tl.y };
+      })()
+    : null;
 
-  // Clamp position to keep input within container bounds
-  const containerRect = container.getBoundingClientRect();
-  const inputWidth = 200; // Approximate width for clamping
-  const inputHeight = scaledFontSize + 20; // Approximate height
-  const margin = 10;
-
-  const clampedX = Math.min(screenPos.x, containerRect.width - inputWidth - margin);
-  const clampedY = Math.max(inputHeight + margin, Math.min(screenPos.y, containerRect.height - margin));
-
-  textInput = document.createElement('input');
-  textInput.type = 'text';
-  textInput.value = shape.text;
-  textInput.className = 'text-edit-input';
+  textInput = document.createElement(isSticky ? 'textarea' : 'input');
+  if (!isSticky) textInput.type = 'text';
+  textInput.value = shape.text || '';
+  textInput.className = isSticky ? 'sticky-edit-input' : 'text-edit-input';
   textInput.style.position = 'absolute';
-  textInput.style.left = `${Math.max(margin, clampedX)}px`;
-  textInput.style.top = `${clampedY}px`;
-  textInput.style.fontSize = `${scaledFontSize}px`;
-  textInput.style.fontFamily = shape.fontFamily || 'Arial';
-  textInput.style.maxWidth = `${containerRect.width - margin * 2}px`;
-  // Text sits above its baseline; a sticky's anchor is its top edge, so place the input there.
-  textInput.style.transform = shape.tool === 'sticky' ? 'none' : 'translateY(-100%)';
+  if (isSticky) {
+    textInput.style.left = `${screenBounds.left}px`;
+    textInput.style.top = `${screenBounds.top}px`;
+    textInput.style.width = `${screenBounds.width}px`;
+    textInput.style.height = `${screenBounds.height}px`;
+    textInput.style.fontSize = `${(shape.fontSize || 16) * viewport.zoom}px`;
+    textInput.style.fontFamily = 'Inter, sans-serif';
+    textInput.style.setProperty('--sticky-fill', shape.fillColor || '#fff8b8');
+  } else {
+    // ---- existing <input> positioning block (text tool path unchanged) ----
+    const anchorX = shape.x;
+    const anchorY = shape.y;
+    const screenPos = worldToScreen(anchorX, anchorY);
+    const scaledFontSize = (shape.fontSize || 20) * viewport.zoom;
+    const containerRect = container.getBoundingClientRect();
+    const margin = 10;
+    const clampedX = Math.min(screenPos.x, containerRect.width - 200 - margin);
+    const clampedY = Math.max(scaledFontSize + 20 + margin, Math.min(screenPos.y, containerRect.height - margin));
+    textInput.style.left = `${Math.max(margin, clampedX)}px`;
+    textInput.style.top = `${clampedY}px`;
+    textInput.style.fontSize = `${scaledFontSize}px`;
+    textInput.style.fontFamily = shape.fontFamily || 'Arial';
+    textInput.style.maxWidth = `${containerRect.width - margin * 2}px`;
+    textInput.style.transform = 'translateY(-100%)';
+  }
 
   // Redraw on input to show live preview
   textInput.addEventListener('input', () => {
@@ -1795,15 +1967,18 @@ function startTextEditing(shape) {
   });
 
   textInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') {
+    if (e.key === 'Enter' && !isSticky) {
+      e.preventDefault();
       finishTextEditing();
     } else if (e.key === 'Escape') {
       clearEditingTextBroadcast();
       editingTextId = null;
-      textInput.remove();
+      const el = textInput;
       textInput = null;
+      el.remove();
       redrawCanvas();
     }
+    // sticky: Enter falls through to the textarea default (newline).
   });
 
   container.appendChild(textInput);
@@ -1812,7 +1987,7 @@ function startTextEditing(shape) {
   requestAnimationFrame(() => {
     if (textInput) {
       textInput.focus();
-      textInput.select();
+      if (!isSticky) textInput.select();
 
       // Add blur listener after focus is established
       setTimeout(() => {
@@ -1831,11 +2006,13 @@ function updateTextInputPosition() {
   // Handle text creation
   if (creatingTextAt) {
     const screenPos = worldToScreen(creatingTextAt.x, creatingTextAt.y);
-    const scaledFontSize = fontSize * viewport.zoom;
+    // Track the frozen world font through zoom changes so the input always reflects
+    // what the committed shape will look like at the current zoom.
+    const trackingFontSize = creatingTextWorldFont * viewport.zoom;
 
     textInput.style.left = `${screenPos.x}px`;
     textInput.style.top = `${screenPos.y}px`;
-    textInput.style.fontSize = `${scaledFontSize}px`;
+    textInput.style.fontSize = `${trackingFontSize}px`;
     textInput.style.transform = 'translateY(-100%)';
     return;
   }
@@ -1846,15 +2023,28 @@ function updateTextInputPosition() {
   const shape = findShapeById(editingTextId);
   if (!shape) return;
 
-  const anchorX = shape.tool === 'sticky' ? shape.startX : shape.x;
-  const anchorY = shape.tool === 'sticky' ? shape.startY : shape.y;
+  if (shape.tool === 'sticky') {
+    const b = getShapeBounds(shape);
+    const tl = worldToScreen(b.x, b.y);
+    const br = worldToScreen(b.x + b.width, b.y + b.height);
+    textInput.style.left = `${tl.x}px`;
+    textInput.style.top = `${tl.y}px`;
+    textInput.style.width = `${br.x - tl.x}px`;
+    textInput.style.height = `${br.y - tl.y}px`;
+    textInput.style.fontSize = `${(shape.fontSize || 16) * viewport.zoom}px`;
+    textInput.style.transform = 'none';
+    return;
+  }
+
+  const anchorX = shape.x;
+  const anchorY = shape.y;
   const screenPos = worldToScreen(anchorX, anchorY);
   const scaledFontSize = (shape.fontSize || 20) * viewport.zoom;
 
   textInput.style.left = `${screenPos.x}px`;
   textInput.style.top = `${screenPos.y}px`;
   textInput.style.fontSize = `${scaledFontSize}px`;
-  textInput.style.transform = shape.tool === 'sticky' ? 'none' : 'translateY(-100%)';
+  textInput.style.transform = 'translateY(-100%)';
 }
 
 function finishTextEditing() {
@@ -2088,6 +2278,36 @@ function updateShapeProperty(shapeId, property, value) {
 
   board.delete(index);
   board.insert(index, [updated]);
+}
+
+// Swap fromId↔toId and fromAnchor↔toAnchor in one transaction (one undo step).
+function reverseConnector(shapeId) {
+  if (!canMutate()) return;
+
+  const boardName = getCurrentBoard();
+  const board = boards.get(boardName);
+  if (!board) return;
+
+  const index = findShapeIndex(shapeId);
+  if (index === -1) return;
+
+  const shape = board.get(index);
+  if (shape.tool !== 'connector' || shape.locked) return;
+
+  const updated = {
+    ...shape,
+    fromId: shape.toId,
+    toId: shape.fromId,
+    fromAnchor: shape.toAnchor,
+    toAnchor: shape.fromAnchor,
+  };
+
+  const run = () => {
+    board.delete(index);
+    board.insert(index, [updated]);
+  };
+  if (board.doc) board.doc.transact(run);
+  else run();
 }
 
 // ============ Hit Detection ============
@@ -2464,6 +2684,7 @@ function redrawCanvas() {
       }
     });
 
+    drawConnectorHints(items);
     drawRemoteDrawings();
     drawLasers();
     drawLocalTextPreview();
@@ -2482,6 +2703,25 @@ function redrawCanvas() {
   } finally {
     shapeIndex = null; // index is only valid within this synchronous pass
   }
+}
+
+// While the connector tool is active, dot every non-connector shape's edge
+// midpoints so it's clear where a connector can attach. Hints only — drop still
+// snaps to the nearest anchor via nearestAnchors.
+function drawConnectorHints(items) {
+  if (currentTool !== 'connector') return;
+  ctx.save();
+  ctx.fillStyle = '#6366f1';
+  const r = 4 / viewport.zoom;
+  for (const s of items) {
+    if (!s || s.tool === 'connector') continue;
+    for (const p of edgeAnchorPoints(getShapeBounds(s))) {
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
 }
 
 // Draw remote users' in-progress drawings
@@ -2604,11 +2844,13 @@ function drawLocalTextPreview() {
 
   if (!text) return;
 
-  // Handle new text creation
+  // Handle new text creation. Use the frozen world-space font (not the screen-px
+  // fontSize) since this draws inside the zoomed world transform — matches the
+  // size finishTextCreation will commit.
   if (creatingTextAt) {
     const localState = awareness?.getLocalState();
     const color = localState?.user?.color || '#000000';
-    drawText(creatingTextAt.x, creatingTextAt.y, text, color, fontSize, fontFamily);
+    drawText(creatingTextAt.x, creatingTextAt.y, text, color, creatingTextWorldFont, fontFamily);
     return;
   }
 
@@ -2653,7 +2895,7 @@ function drawShape(item) {
     drawText(item.x, item.y, item.text, color, item.fontSize, item.fontFamily);
   } else if (tool === 'sticky') {
     const b = getShapeBounds(item);
-    drawSticky(b.x, b.y, b.width, b.height, item.fillColor, item.text, item.fontSize);
+    drawSticky(b.x, b.y, b.width, b.height, item.fillColor, item.text, item.fontSize, stickyScroll.get(item.id) || 0);
   } else if (tool === 'highlight') {
     ctx.save();
     ctx.globalAlpha = 0.35;
@@ -2864,6 +3106,8 @@ function drawCircle(x, y, radius, color, fillColor) {
 }
 
 function drawArrow(startX, startY, x, y, color, sw, strokeStyle, arrowHeads) {
+  // Sanitize arrowHeads: unknown peer values fall back to 'end' (default).
+  const heads = (arrowHeads === 'both' || arrowHeads === 'none') ? arrowHeads : 'end';
   const headLen = Math.max(8, (sw || 2) * 3);
   ctx.strokeStyle = color;
   ctx.lineWidth = sw || 2;
@@ -2875,13 +3119,18 @@ function drawArrow(startX, startY, x, y, color, sw, strokeStyle, arrowHeads) {
   ctx.moveTo(startX, startY);
   ctx.lineTo(x, y);
   ctx.stroke();
+  // 'none' → skip all barbs; draw shaft only.
+  if (heads === 'none') {
+    ctx.setLineDash([]);
+    return;
+  }
   // Arrowheads are always solid
   ctx.setLineDash([]);
   ctx.beginPath();
   for (const p of arrowHeadPoints(startX, startY, x, y, headLen)) {
     ctx.moveTo(x, y); ctx.lineTo(p.x, p.y);
   }
-  if (arrowHeads === 'both') {
+  if (heads === 'both') {
     for (const p of arrowHeadPoints(x, y, startX, startY, headLen)) {
       ctx.moveTo(startX, startY); ctx.lineTo(p.x, p.y);
     }
@@ -2922,9 +3171,12 @@ function drawEllipseShape(x, y, width, height, color, sw, strokeStyle, fillColor
 // Render a sticky note: rounded filled rect + word-wrapped text. Text is drawn
 // with canvas fillText (NEVER innerHTML — it is untrusted peer data). save/restore
 // so font/textBaseline/fillStyle never leak into other shapes' draws.
-function drawSticky(x, y, width, height, fillColor, text, fontSize) {
+// scrollY is a LOCAL-ONLY ephemeral offset (never stored in the CRDT). Pass 0
+// for drag ghosts, previews, and any context that has no scroll state.
+function drawSticky(x, y, width, height, fillColor, text, fontSize, scrollY = 0) {
   const pad = 12;
   ctx.save();
+  // Draw the note background (always unclipped so the rounded rect is fully visible).
   ctx.fillStyle = fillColor || '#fff8b8';
   ctx.beginPath();
   if (ctx.roundRect) ctx.roundRect(x, y, width, height, 6);
@@ -2932,18 +3184,32 @@ function drawSticky(x, y, width, height, fillColor, text, fontSize) {
   ctx.fill();
   if (text) {
     const fs = fontSize || 16;
+    const lineStep = fs * 1.3;
+    const innerHeight = height - pad * 2;
     ctx.fillStyle = '#1a1a1a';
     ctx.font = `${fs}px Inter, sans-serif`;
     ctx.textBaseline = 'top';
     // Cap length before wrapping: a peer could inject an enormous single "word",
-    // and wrapText's per-char hard-break does an O(n) measureText scan per line.
+    // and wrapMultiline → wrapText's per-char hard-break does an O(n) measureText scan per line.
     // No real note exceeds this, and only what fits the note height renders anyway.
     const capped = text.length > 4000 ? text.slice(0, 4000) : text;
-    const lines = wrapText((s) => ctx.measureText(s).width, capped, width - pad * 2);
+    const lines = wrapMultiline((s) => ctx.measureText(s).width, capped, width - pad * 2);
+    // Clamp scrollY defensively to [0, max] before drawing.
+    const maxScroll = stickyMaxScroll(lines.length, lineStep, innerHeight);
+    const clampedScroll = Math.max(0, Math.min(scrollY, maxScroll));
+    // Clip text to the note's inner rect so scrolled-out lines don't bleed outside.
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x + pad, y + pad, width - pad * 2, innerHeight);
+    ctx.clip();
     for (let i = 0; i < lines.length; i++) {
-      const ly = y + pad + i * (fs * 1.3);
-      if (ly + fs <= y + height - pad) ctx.fillText(lines[i], x + pad, ly);
+      const ly = y + pad - clampedScroll + i * lineStep;
+      // Only draw lines whose band intersects the visible area — early-out the rest.
+      if (ly + fs <= y + pad) continue;
+      if (ly >= y + height - pad) break;
+      ctx.fillText(lines[i], x + pad, ly);
     }
+    ctx.restore();
   }
   ctx.restore();
 }
@@ -2974,35 +3240,70 @@ function drawFreehand(points, color, sw) {
 }
 
 /**
- * Get all text items from the current board
- * Used for text extraction feature
- * @returns {Array<{x: number, y: number, text: string, user: string, color: string}>}
- */
-export function getTexts() {
-  const boardName = getCurrentBoard();
-  const board = boards.get(boardName);
-  if (!board) return [];
-
-  const texts = [];
-  board.forEach(item => {
-    if (item.tool === 'text') {
-      texts.push({
-        x: item.x,
-        y: item.y,
-        text: item.text,
-        user: item.user,
-        color: item.color
-      });
-    }
-  });
-
-  return texts;
-}
-
-/**
  * Get the canvas element for external use (e.g., save as image)
  * @returns {HTMLCanvasElement}
  */
 export function getCanvas() {
   return canvas;
+}
+
+/**
+ * Render the current board's shapes onto a target canvas at a given view.
+ * Draws SHAPES ONLY — no selection overlays, cursors, connectorHints, lasers,
+ * or in-progress previews. White background is filled first.
+ *
+ * The function temporarily swaps the module-level ctx/canvas/viewport to the
+ * target, runs the draw pass, then ALWAYS restores them (try/finally), so the
+ * live board canvas is never corrupted.
+ *
+ * @param {HTMLCanvasElement} targetCanvas - Canvas to render into
+ * @param {{x: number, y: number, zoom: number}} view - Viewport for the render
+ */
+export function renderBoardToCanvas(targetCanvas, view) {
+  if (!boards || !getCurrentBoard) return;
+
+  const boardName = getCurrentBoard();
+  const board = boards.get(boardName);
+
+  // Save module-level state
+  const savedCanvas = canvas;
+  const savedCtx = ctx;
+  const savedViewport = { x: viewport.x, y: viewport.y, zoom: viewport.zoom };
+
+  // Point module state at the target
+  canvas = targetCanvas;
+  ctx = targetCanvas.getContext('2d');
+  viewport.x = view.x;
+  viewport.y = view.y;
+  viewport.zoom = view.zoom;
+
+  try {
+    ctx.clearRect(0, 0, targetCanvas.width, targetCanvas.height);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, targetCanvas.width, targetCanvas.height);
+
+    if (board) {
+      const items = board.toArray();
+      // Build a temporary shape index so connectors resolve correctly
+      shapeIndex = buildShapeIndex(items);
+      try {
+        ctx.save();
+        ctx.scale(view.zoom, view.zoom);
+        ctx.translate(-view.x, -view.y);
+        items.forEach((item) => {
+          drawShape(item);
+        });
+        ctx.restore();
+      } finally {
+        shapeIndex = null;
+      }
+    }
+  } finally {
+    // Always restore module-level state
+    canvas = savedCanvas;
+    ctx = savedCtx;
+    viewport.x = savedViewport.x;
+    viewport.y = savedViewport.y;
+    viewport.zoom = savedViewport.zoom;
+  }
 }

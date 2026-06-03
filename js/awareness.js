@@ -207,39 +207,47 @@ export function getUsers(awareness) {
 
 function renderUsers(awareness) {
   if (!usersContainer) return;
-
   const users = getUsers(awareness);
-
   usersContainer.innerHTML = '';
 
-  users.forEach(user => {
-    const userEl = document.createElement('div');
-    userEl.className = 'user-item';
-
+  const MAX = 5;
+  users.slice(0, MAX).forEach(user => {
     const isLocal = user.id === localUserId;
-    // Untrusted: sanitize the peer-supplied color before it hits innerHTML.
     const color = safeColor(user.color);
+    const initial = escapeHtml((user.name || '?').trim().charAt(0).toUpperCase() || '?');
+    const el = document.createElement('div');
+    el.className = isLocal ? 'avatar avatar-self' : 'avatar';
+    el.style.setProperty('--avatar-color', color);
+    el.title = isLocal ? 'Click to change your color' : escapeHtml(user.name);
+    el.textContent = initial;
 
-    // Set the color via CSSOM (CSP-safe) so .user-color reads it from var();
-    // avoids an inline style="" attribute that would need style-src 'unsafe-inline'.
-    userEl.style.setProperty('--user-color', color);
-    userEl.innerHTML = `
-      <span class="user-color"></span>
-      <span class="user-name">${escapeHtml(user.name)}${isLocal ? ' (you)' : ''}</span>
-    `;
-    usersContainer.appendChild(userEl);
+    if (isLocal) {
+      // Overlay a transparent color input so clicking the avatar opens the native picker.
+      // The input is absolutely positioned to fill the bubble (via CSS class .avatar-color-input),
+      // opacity 0 so the letter shows through, cursor: pointer.
+      const colorInput = document.createElement('input');
+      colorInput.type = 'color';
+      colorInput.id = 'user-color';
+      colorInput.className = 'avatar-color-input';
+      colorInput.value = getLocalUserColor();
+      colorInput.title = 'Click to change your color';
+      colorInput.oninput = (e) => {
+        changeUserColor(e.target.value);
+      };
+      el.appendChild(colorInput);
+    }
+
+    usersContainer.appendChild(el);
   });
 
-  // Update user count - supports both old sidebar format and new badge format
-  const countEl = document.getElementById('user-count');
-  if (countEl) {
-    // Check if it's the new badge style (has user-count-badge class) or old style
-    if (countEl.classList.contains('user-count-badge')) {
-      countEl.textContent = users.length;
-    } else {
-      countEl.textContent = `${users.length} user${users.length !== 1 ? 's' : ''} online`;
-    }
+  if (users.length > MAX) {
+    const more = document.createElement('div');
+    more.className = 'avatar avatar-more';
+    more.textContent = `+${users.length - MAX}`;
+    more.title = `${users.length - MAX} more`;
+    usersContainer.appendChild(more);
   }
+
 }
 
 // Transform world coordinates to screen coordinates using current viewport
