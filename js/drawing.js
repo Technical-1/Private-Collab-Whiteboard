@@ -2828,11 +2828,13 @@ function drawLocalTextPreview() {
 
   if (!text) return;
 
-  // Handle new text creation
+  // Handle new text creation. Use the frozen world-space font (not the screen-px
+  // fontSize) since this draws inside the zoomed world transform — matches the
+  // size finishTextCreation will commit.
   if (creatingTextAt) {
     const localState = awareness?.getLocalState();
     const color = localState?.user?.color || '#000000';
-    drawText(creatingTextAt.x, creatingTextAt.y, text, color, fontSize, fontFamily);
+    drawText(creatingTextAt.x, creatingTextAt.y, text, color, creatingTextWorldFont, fontFamily);
     return;
   }
 
