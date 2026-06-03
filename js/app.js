@@ -1057,16 +1057,29 @@ function setupZoomPanControls() {
     }
   }, true);
 
-  // Scroll wheel zoom (centered on cursor)
+  // Scroll wheel zoom (centered on cursor), with sticky-note scroll interception.
+  // When the cursor is over an overflowing sticky note, the wheel scrolls the note
+  // instead of zooming the canvas. Over empty canvas or a non-overflowing note the
+  // normal zoom behavior applies.
   canvas.addEventListener('wheel', (e) => {
-    e.preventDefault();
-
     const rect = canvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
-    const worldBefore = screenToWorld(mouseX, mouseY);
+    // Compute world coordinates BEFORE any zoom change so handleStickyScroll
+    // receives the correct world position.
+    const worldPos = screenToWorld(mouseX, mouseY);
 
+    // Let an overflowing sticky note consume the wheel event.
+    if (drawingController.handleStickyScroll(worldPos.x, worldPos.y, e.deltaY)) {
+      e.preventDefault();
+      return;
+    }
+
+    // Default: zoom the canvas centered on the cursor.
+    e.preventDefault();
+
+    const worldBefore = worldPos; // already computed above
     const viewport = getViewport();
     const zoomFactor = e.deltaY > 0 ? 1 / ZOOM_WHEEL_STEP : ZOOM_WHEEL_STEP;
     const newZoom = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, viewport.zoom * zoomFactor));

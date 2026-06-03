@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { wrapText, wrapMultiline } from '../js/text-wrap.js';
+import { wrapText, wrapMultiline, stickyMaxScroll } from '../js/text-wrap.js';
 
 const measure = (s) => s.length * 10; // 10px per char, deterministic
 
@@ -43,5 +43,27 @@ describe('wrapMultiline', () => {
   });
   it('non-string input returns []', () => {
     expect(wrapMultiline(measure, null, 100)).toEqual([]);
+  });
+});
+
+describe('stickyMaxScroll', () => {
+  it('returns 0 when content fits exactly (no overflow)', () => {
+    // 3 lines * 20px step = 60px total, innerHeight = 60px → fits, no scroll
+    expect(stickyMaxScroll(3, 20, 60)).toBe(0);
+  });
+
+  it('returns 0 when content is smaller than the available area', () => {
+    // 2 lines * 20px = 40px, innerHeight = 80px → no scroll
+    expect(stickyMaxScroll(2, 20, 80)).toBe(0);
+  });
+
+  it('returns positive value when content overflows', () => {
+    // 5 lines * 20px = 100px, innerHeight = 60px → 40px of overflow
+    expect(stickyMaxScroll(5, 20, 60)).toBe(40);
+  });
+
+  it('handles exact boundary: one extra line beyond capacity → positive', () => {
+    // 4 lines * 20px = 80px, innerHeight = 60px → 20px overflow
+    expect(stickyMaxScroll(4, 20, 60)).toBe(20);
   });
 });

@@ -2,7 +2,7 @@ import * as Y from 'yjs';
 import { generateId, safeColor, safeNumber, safeToolName } from './utils.js';
 import { sanitizeShape, clampPoints, safeStrokeWidth } from './shape-schema.js';
 import { arrowHeadPoints, polygonPoints, pointInPolygon, dashPattern, textBounds, isDegenerateShape, buildShapeIndex } from './draw-geometry.js';
-import { wrapMultiline } from './text-wrap.js';
+import { wrapMultiline, stickyMaxScroll } from './text-wrap.js';
 import {
   updateCursorPosition,
   clearCursorPosition,
@@ -127,6 +127,10 @@ let observedBoardArray = null;
 // Non-null ONLY during a synchronous redrawCanvas pass. findShapeById prefers it
 // to avoid O(n) board.toArray() scans while resolving connector endpoints.
 let shapeIndex = null;
+
+// Local-only scroll offsets for overflowing sticky notes (shapeId → scrollY px).
+// Never written to the Y.js CRDT; ephemeral per-viewer state.
+const stickyScroll = new Map();
 
 // Viewport state for infinite canvas
 let viewport = {
@@ -450,6 +454,62 @@ export function setupDrawing(canvasEl, boardsMap, awarenessInstance, getBoardFn)
       if (selectedIds.size === 0) return null;
       const firstId = selectedIds.values().next().value;
       return findShapeById(firstId);
+    },
+
+    /**
+     * Attempt to scroll an overflowing sticky note under the given world coordinates.
+     * Called from the wheel handler in app.js BEFORE the zoom logic runs.
+     *
+     * Returns true if the wheel was consumed (sticky had overflow and scroll was applied),
+     * false if the wheel should fall through to the normal canvas zoom.
+     *
+     * Scroll is LOCAL ONLY — never written to the CRDT.
+     *
+     * @param {number} worldX  - cursor world X at the time of the wheel event
+     * @param {number} worldY  - cursor world Y
+     * @param {number} deltaY  - e.deltaY from the WheelEvent (positive = scroll down)
+     * @returns {boolean}
+     */
+    handleStickyScroll(worldX, worldY, deltaY) {
+      const boardName = getCurrentBoard();
+      const board = boards.get(boardName);
+      if (!board) return false;
+
+      // Find the top-most sticky whose bounding box contains the world point.
+      const items = board.toArray();
+      let target = null;
+      for (let i = items.length - 1; i >= 0; i--) {
+        const item = items[i];
+        if (item.tool !== 'sticky') continue;
+        const b = getShapeBounds(item);
+        if (worldX >= b.x && worldX <= b.x + b.width &&
+            worldY >= b.y && worldY <= b.y + b.height) {
+          target = item;
+          break;
+        }
+      }
+      if (!target) return false;
+
+      // Compute the wrapped line count with the same parameters drawSticky uses.
+      const pad = 12;
+      const fs = target.fontSize || 16;
+      const lineStep = fs * 1.3;
+      const b = getShapeBounds(target);
+      const innerHeight = b.height - pad * 2;
+      const text = target.text || '';
+      const capped = text.length > 4000 ? text.slice(0, 4000) : text;
+
+      // Set ctx font so measureText reflects the sticky's typeface.
+      ctx.font = `${fs}px Inter, sans-serif`;
+      const lines = wrapMultiline((s) => ctx.measureText(s).width, capped, b.width - pad * 2);
+      const max = stickyMaxScroll(lines.length, lineStep, innerHeight);
+
+      if (max <= 0) return false; // content fits — pass the wheel to canvas zoom
+
+      const cur = stickyScroll.get(target.id) || 0;
+      stickyScroll.set(target.id, Math.max(0, Math.min(cur + deltaY, max)));
+      redrawCanvas();
+      return true;
     }
   };
 }
@@ -2853,7 +2913,7 @@ function drawShape(item) {
     drawText(item.x, item.y, item.text, color, item.fontSize, item.fontFamily);
   } else if (tool === 'sticky') {
     const b = getShapeBounds(item);
-    drawSticky(b.x, b.y, b.width, b.height, item.fillColor, item.text, item.fontSize);
+    drawSticky(b.x, b.y, b.width, b.height, item.fillColor, item.text, item.fontSize, stickyScroll.get(item.id) || 0);
   } else if (tool === 'highlight') {
     ctx.save();
     ctx.globalAlpha = 0.35;
@@ -3129,9 +3189,12 @@ function drawEllipseShape(x, y, width, height, color, sw, strokeStyle, fillColor
 // Render a sticky note: rounded filled rect + word-wrapped text. Text is drawn
 // with canvas fillText (NEVER innerHTML — it is untrusted peer data). save/restore
 // so font/textBaseline/fillStyle never leak into other shapes' draws.
-function drawSticky(x, y, width, height, fillColor, text, fontSize) {
+// scrollY is a LOCAL-ONLY ephemeral offset (never stored in the CRDT). Pass 0
+// for drag ghosts, previews, and any context that has no scroll state.
+function drawSticky(x, y, width, height, fillColor, text, fontSize, scrollY = 0) {
   const pad = 12;
   ctx.save();
+  // Draw the note background (always unclipped so the rounded rect is fully visible).
   ctx.fillStyle = fillColor || '#fff8b8';
   ctx.beginPath();
   if (ctx.roundRect) ctx.roundRect(x, y, width, height, 6);
@@ -3139,6 +3202,8 @@ function drawSticky(x, y, width, height, fillColor, text, fontSize) {
   ctx.fill();
   if (text) {
     const fs = fontSize || 16;
+    const lineStep = fs * 1.3;
+    const innerHeight = height - pad * 2;
     ctx.fillStyle = '#1a1a1a';
     ctx.font = `${fs}px Inter, sans-serif`;
     ctx.textBaseline = 'top';
@@ -3147,10 +3212,22 @@ function drawSticky(x, y, width, height, fillColor, text, fontSize) {
     // No real note exceeds this, and only what fits the note height renders anyway.
     const capped = text.length > 4000 ? text.slice(0, 4000) : text;
     const lines = wrapMultiline((s) => ctx.measureText(s).width, capped, width - pad * 2);
+    // Clamp scrollY defensively to [0, max] before drawing.
+    const maxScroll = stickyMaxScroll(lines.length, lineStep, innerHeight);
+    const clampedScroll = Math.max(0, Math.min(scrollY, maxScroll));
+    // Clip text to the note's inner rect so scrolled-out lines don't bleed outside.
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(x + pad, y + pad, width - pad * 2, innerHeight);
+    ctx.clip();
     for (let i = 0; i < lines.length; i++) {
-      const ly = y + pad + i * (fs * 1.3);
-      if (ly + fs <= y + height - pad) ctx.fillText(lines[i], x + pad, ly);
+      const ly = y + pad - clampedScroll + i * lineStep;
+      // Only draw lines whose band intersects the visible area — early-out the rest.
+      if (ly + fs <= y + pad) continue;
+      if (ly >= y + height - pad) break;
+      ctx.fillText(lines[i], x + pad, ly);
     }
+    ctx.restore();
   }
   ctx.restore();
 }

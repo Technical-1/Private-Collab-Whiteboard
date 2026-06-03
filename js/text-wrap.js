@@ -37,3 +37,17 @@ export function wrapMultiline(measure, text, maxWidth) {
   }
   return out;
 }
+
+/**
+ * Returns the maximum scrollable pixels for a sticky note's text area.
+ * When the wrapped text fits within innerHeight, returns 0 (no scroll needed).
+ * When content overflows, returns the positive excess in pixels.
+ *
+ * @param {number} lineCount   - number of wrapped lines
+ * @param {number} lineStep    - vertical distance per line in pixels (fs * 1.3)
+ * @param {number} innerHeight - available height for text (height - pad*2)
+ * @returns {number} max scroll offset in pixels (>= 0)
+ */
+export function stickyMaxScroll(lineCount, lineStep, innerHeight) {
+  return Math.max(0, lineCount * lineStep - innerHeight);
+}
