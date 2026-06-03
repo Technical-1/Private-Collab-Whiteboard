@@ -107,6 +107,7 @@ function canMutate() {
 }
 
 let drawing = false;
+let erasingShapes = false; // true while dragging with eraser-shape tool
 let startX = 0;
 let startY = 0;
 let currentTool = 'select';
@@ -546,8 +547,9 @@ function handleMouseDown(e) {
   // Handle shape eraser
   if (currentTool === 'eraser-shape') {
     if (!canMutate()) return; // Block in read-only mode
+    erasingShapes = true;
     const shape = findShapeAtPoint(startX, startY);
-    if (shape) {
+    if (shape && !shape.locked) {
       deleteShape(shape.id);
     }
     return;
@@ -603,6 +605,8 @@ function handleMouseDown(e) {
 }
 
 function handleMouseUp(e) {
+  erasingShapes = false;
+
   const rect = canvas.getBoundingClientRect();
   const screenX = e.clientX - rect.left;
   const screenY = e.clientY - rect.top;
@@ -769,6 +773,16 @@ function handleMouseMove(e) {
     return;
   }
 
+  // Drag-erase: erase every non-locked shape the cursor passes over.
+  if (erasingShapes && currentTool === 'eraser-shape') {
+    const s = findShapeAtPoint(x, y);
+    if (s && !s.locked) {
+      deleteShape(s.id);
+    }
+    redrawCanvas();
+    return;
+  }
+
   // Connector creation preview: rubber-band arrow from the source shape to the cursor.
   if (currentTool === 'connector') {
     if (drawing && connectorFromId) {
@@ -894,6 +908,7 @@ function handleMouseMove(e) {
 }
 
 function handleMouseLeave() {
+  erasingShapes = false;
   if (laserTrail.length) { laserTrail = []; clearLaser(); }
   clearCursorPosition();
   // Only clear hover, keep selection and its controls
@@ -1078,6 +1093,7 @@ function handleTouchEnd(e) {
     touchState.active = false;
 
     // Don't start a new drawing, just reset
+    erasingShapes = false;
     drawing = false;
     freehandPoints = [];
     clearCurrentDrawing(); // Clear live preview for other users
