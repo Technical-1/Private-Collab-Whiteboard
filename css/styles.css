@@ -3006,7 +3006,6 @@ body:not(.read-only-mode) .read-only-banner {
   right: 12px;
   display: flex;
   align-items: center;
-  gap: 12px;
   z-index: 90;
 }
 
@@ -3052,25 +3051,3 @@ body:not(.read-only-mode) .read-only-banner {
   border-radius: 50%;
 }
 
-/* ============================================
-   GLASS ICON BAR (top-right)
-   ============================================ */
-.room-actions {
-  display: flex; align-items: center; gap: 4px;
-  padding: 6px;
-  border-radius: 12px;
-}
-.room-actions .action-icon {
-  width: 34px; height: 34px;
-  display: flex; align-items: center; justify-content: center;
-  border: none; background: transparent; color: var(--text-primary);
-  border-radius: 8px; cursor: pointer;
-}
-.room-actions .action-icon:hover { background: rgba(255,255,255,0.10); }
-.room-actions .color-swatch { padding: 0; overflow: hidden; }
-.room-actions .color-swatch input[type="color"] { width: 34px; height: 34px; border: none; background: none; cursor: pointer; border-radius: 8px; }
-
-/* ============================================
-   A11Y - FOCUS RING ON ICON BUTTONS
-   ============================================ */
-.room-actions .action-icon:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
