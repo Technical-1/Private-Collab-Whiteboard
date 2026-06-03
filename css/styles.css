@@ -708,9 +708,14 @@ body {
 }
 
 .header-center {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
   display: flex;
   align-items: center;
   gap: 8px;
+  /* Prevent overlap with left/right sections on very narrow viewports */
+  max-width: calc(100% - 320px);
 }
 
 .board-tabs {
@@ -768,6 +773,7 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
+  margin-left: auto;
 }
 
 .icon-btn {
@@ -793,6 +799,35 @@ body {
   background: rgba(99, 102, 241, 0.2);
   border-color: var(--primary);
   color: var(--primary-light);
+}
+
+/* Header Invite button — lives in header-right, not the floating cluster */
+.header-invite-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
+  border: none;
+  border-radius: 8px;
+  color: #ffffff;
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.35);
+  white-space: nowrap;
+}
+
+.header-invite-btn:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.5);
+}
+
+.header-invite-btn:focus-visible {
+  outline: 2px solid var(--primary-light);
+  outline-offset: 2px;
 }
 
 /* Floating Panels */
@@ -2514,8 +2549,7 @@ body:not(.read-only-mode) .read-only-banner {
   }
 
   .header-center {
-    flex: 1;
-    max-width: 50%;
+    max-width: calc(100% - 200px);
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
   }
