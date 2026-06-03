@@ -51,3 +51,15 @@ export function edgeAnchorPoints(bbox) {
     { x, y: y + h / 2 },        // w
   ];
 }
+
+// The edge anchor (of n/e/s/w) closest to a point — used to start the connector
+// rubber-band preview from the hint dot the cursor is nearest, matching where it binds.
+export function nearestAnchorToPoint(bbox, px, py) {
+  const pts = edgeAnchorPoints(bbox);
+  let best = pts[0], bestD = Infinity;
+  for (const p of pts) {
+    const d = (p.x - px) ** 2 + (p.y - py) ** 2;
+    if (d < bestD) { bestD = d; best = p; }
+  }
+  return best;
+}

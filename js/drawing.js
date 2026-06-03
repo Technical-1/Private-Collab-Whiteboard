@@ -17,7 +17,7 @@ import {
 } from './awareness.js';
 import { pruneTrail, MAX_TRAIL_AGE_MS } from './laser-trail.js';
 import { showAlert } from './modal.js';
-import { resolveAnchor, nearestAnchors, danglingConnectorIndices, edgeAnchorPoints } from './connector-geometry.js';
+import { resolveAnchor, nearestAnchors, danglingConnectorIndices, edgeAnchorPoints, nearestAnchorToPoint } from './connector-geometry.js';
 import { ZOOM_MIN, ZOOM_MAX, HIT_TEST_THRESHOLD } from './config.js';
 
 let canvas = null;
@@ -705,7 +705,7 @@ function handleMouseMove(e) {
       const fromShape = findShapeById(connectorFromId);
       if (fromShape) {
         redrawCanvas();
-        const p1 = resolveAnchor(getShapeBounds(fromShape), 'c');
+        const p1 = nearestAnchorToPoint(getShapeBounds(fromShape), x, y);
         ctx.save();
         ctx.scale(viewport.zoom, viewport.zoom);
         ctx.translate(-viewport.x, -viewport.y);
