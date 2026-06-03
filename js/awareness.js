@@ -231,8 +231,6 @@ function renderUsers(awareness) {
     usersContainer.appendChild(more);
   }
 
-  const countEl = document.getElementById('user-count');
-  if (countEl) countEl.textContent = users.length;
 }
 
 // Transform world coordinates to screen coordinates using current viewport

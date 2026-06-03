@@ -2353,10 +2353,6 @@ body:not(.read-only-mode) .read-only-banner {
   align-items: center;
   gap: 4px;
   padding: 8px;
-  background: rgba(26, 26, 46, 0.95);
-  backdrop-filter: blur(10px);
-  border-radius: 10px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
   z-index: 80;
 }
 
@@ -2563,18 +2559,6 @@ body:not(.read-only-mode) .read-only-banner {
       height: 1px;
       margin: 4px 0;
     }
-  }
-}
-
-/* Hide floating panel on very small screens - use modal instead */
-@media (max-width: 480px) {
-  #floating-panel {
-    display: none;
-  }
-
-  /* Add a toggle button to show panel as modal */
-  .mobile-panel-toggle {
-    display: block;
   }
 }
 
@@ -2939,17 +2923,26 @@ body:not(.read-only-mode) .read-only-banner {
 }
 
 /* ============================================
+   TOP-RIGHT CLUSTER (presence + actions bar)
+   ============================================ */
+.top-right-cluster {
+  position: fixed;
+  top: 68px;            /* below the 56px header */
+  right: 12px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  z-index: 90;
+}
+
+/* ============================================
    PRESENCE AVATARS (top-right overlay)
    ============================================ */
 .presence-cluster {
-  position: absolute;
-  top: 12px;
-  right: 300px;               /* sits left of the #room-actions glass bar */
   display: flex;
   flex-direction: row-reverse; /* stack overlap with newest on top-left */
   align-items: center;
   gap: 0;
-  z-index: 20;
   pointer-events: none;
 }
 .presence-cluster .avatar {
@@ -2972,12 +2965,9 @@ body:not(.read-only-mode) .read-only-banner {
    GLASS ICON BAR (top-right)
    ============================================ */
 .room-actions {
-  position: absolute;
-  top: 12px; right: 12px;
   display: flex; align-items: center; gap: 4px;
   padding: 6px;
   border-radius: 12px;
-  z-index: 21;
 }
 .room-actions .action-icon {
   width: 34px; height: 34px;
@@ -2987,4 +2977,9 @@ body:not(.read-only-mode) .read-only-banner {
 }
 .room-actions .action-icon:hover { background: rgba(255,255,255,0.10); }
 .room-actions .color-swatch { padding: 0; overflow: hidden; }
-.room-actions .color-swatch input[type="color"] { width: 34px; height: 34px; border: none; background: none; cursor: pointer; }
+.room-actions .color-swatch input[type="color"] { width: 34px; height: 34px; border: none; background: none; cursor: pointer; border-radius: 8px; }
+
+/* ============================================
+   A11Y - FOCUS RING ON ICON BUTTONS
+   ============================================ */
+.room-actions .action-icon:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }

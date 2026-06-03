@@ -67,8 +67,6 @@
         </svg>
       </button>
     </div>
-    <div class="header-right">
-    </div>
   </header>
 
   <!-- Floating Toolbar -->
@@ -237,10 +235,11 @@
 
   <!-- Canvas Area -->
   <main id="canvas-area">
-    <!-- Live presence (top-right, left of actions bar) -->
-    <div id="presence" class="presence-cluster"></div>
-    <!-- Glass icon bar (top-right) -->
-    <div id="room-actions" class="room-actions floating-panel">
+    <div class="top-right-cluster">
+      <!-- Live presence (top-right, left of actions bar) -->
+      <div id="presence" class="presence-cluster"></div>
+      <!-- Glass icon bar (top-right) -->
+      <div id="room-actions" class="room-actions floating-panel">
       <button id="invite-btn" class="action-icon" title="Invite people">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
@@ -285,6 +284,7 @@
           <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
         </svg>
       </button>
+    </div>
     </div>
     <div id="canvas-container">
       <!-- Loading Overlay -->
