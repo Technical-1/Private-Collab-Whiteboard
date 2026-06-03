@@ -238,6 +238,7 @@ let shapeControlsContainer = null;
 let editingTextId = null;
 let textInput = null;
 let creatingTextAt = null; // {x, y} position for new text being created
+let creatingTextWorldFont = 20; // world-space font size frozen at creation start
 
 // Event listener tracking for cleanup
 const eventListeners = [];
@@ -559,16 +560,19 @@ function handleMouseDown(e) {
     return;
   }
 
-  // Handle sticky note - click to place a default-size note centered on the cursor
+  // Handle sticky note - click to place a default-size note centered on the cursor.
+  // screenSize is the desired on-screen pixel size; dividing by zoom gives world units
+  // so the rendered size (worldSize * zoom) equals screenSize at any zoom level.
   if (currentTool === 'sticky') {
     if (!canMutate()) return; // Block in read-only mode
-    const size = 180;
+    const screenSize = 180;
+    const size = screenSize / viewport.zoom;
     addDrawing({
       tool: 'sticky',
       startX: startX - size / 2,
       startY: startY - size / 2,
       width: size, height: size,
-      text: '', fillColor: currentStickyColor, fontSize: 16,
+      text: '', fillColor: currentStickyColor, fontSize: 16 / viewport.zoom,
     });
     return;
   }
@@ -1750,17 +1754,24 @@ function startTextCreation(worldX, worldY) {
 
   creatingTextAt = { x: worldX, y: worldY };
 
+  // Freeze the world-space font at creation time. The module `fontSize` slider is
+  // the desired SCREEN size; dividing by current zoom gives world units so that
+  // rendered size (worldFont * zoom) equals the screen target at any zoom level.
+  creatingTextWorldFont = fontSize / viewport.zoom;
+
   const localState = awareness?.getLocalState();
   const color = localState?.user?.color || '#000000';
 
   // Convert world coordinates to screen coordinates for input positioning
   const screenPos = worldToScreen(worldX, worldY);
-  const scaledFontSize = fontSize * viewport.zoom;
+  // The input should display at the screen-target size (fontSize px) — this
+  // matches what the final rendered shape will look like on screen.
+  const inputFontSize = fontSize;
 
   // Clamp position to keep input within container bounds
   const containerRect = container.getBoundingClientRect();
   const inputWidth = 200; // Approximate width for clamping
-  const inputHeight = scaledFontSize + 20; // Approximate height
+  const inputHeight = inputFontSize + 20; // Approximate height
   const margin = 10;
 
   const clampedX = Math.min(screenPos.x, containerRect.width - inputWidth - margin);
@@ -1773,20 +1784,21 @@ function startTextCreation(worldX, worldY) {
   textInput.style.position = 'absolute';
   textInput.style.left = `${Math.max(margin, clampedX)}px`;
   textInput.style.top = `${clampedY}px`;
-  textInput.style.fontSize = `${scaledFontSize}px`;
+  textInput.style.fontSize = `${inputFontSize}px`;
   textInput.style.fontFamily = fontFamily;
   textInput.style.maxWidth = `${containerRect.width - margin * 2}px`;
   textInput.style.transform = 'translateY(-100%)'; // Position above click point
 
   // Live preview as user types
   textInput.addEventListener('input', () => {
-    // Broadcast text being typed for live preview
+    // Broadcast text being typed for live preview using the frozen world font so
+    // remote peers (who render in world space) see it at the correct size.
     updateCurrentDrawing({
       tool: 'text',
       x: worldX,
       y: worldY,
       text: textInput.value,
-      fontSize: fontSize,
+      fontSize: creatingTextWorldFont,
       fontFamily: fontFamily
     });
     redrawCanvas();
@@ -1824,12 +1836,14 @@ function finishTextCreation() {
 
   const text = textInput.value;
   if (text && text.trim()) {
+    // Store the world-space font size frozen at creation time so the shape renders
+    // at the intended screen size at any zoom level.
     addDrawing({
       tool: 'text',
       x: creatingTextAt.x,
       y: creatingTextAt.y,
       text: text,
-      fontSize: fontSize,
+      fontSize: creatingTextWorldFont,
       fontFamily: fontFamily
     });
   }
@@ -1976,11 +1990,13 @@ function updateTextInputPosition() {
   // Handle text creation
   if (creatingTextAt) {
     const screenPos = worldToScreen(creatingTextAt.x, creatingTextAt.y);
-    const scaledFontSize = fontSize * viewport.zoom;
+    // Track the frozen world font through zoom changes so the input always reflects
+    // what the committed shape will look like at the current zoom.
+    const trackingFontSize = creatingTextWorldFont * viewport.zoom;
 
     textInput.style.left = `${screenPos.x}px`;
     textInput.style.top = `${screenPos.y}px`;
-    textInput.style.fontSize = `${scaledFontSize}px`;
+    textInput.style.fontSize = `${trackingFontSize}px`;
     textInput.style.transform = 'translateY(-100%)';
     return;
   }
