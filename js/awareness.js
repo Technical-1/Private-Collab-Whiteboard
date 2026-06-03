@@ -218,8 +218,25 @@ function renderUsers(awareness) {
     const el = document.createElement('div');
     el.className = isLocal ? 'avatar avatar-self' : 'avatar';
     el.style.setProperty('--avatar-color', color);
-    el.title = `${escapeHtml(user.name)}${isLocal ? ' (you)' : ''}`;
+    el.title = isLocal ? 'Click to change your color' : escapeHtml(user.name);
     el.textContent = initial;
+
+    if (isLocal) {
+      // Overlay a transparent color input so clicking the avatar opens the native picker.
+      // The input is absolutely positioned to fill the bubble (via CSS class .avatar-color-input),
+      // opacity 0 so the letter shows through, cursor: pointer.
+      const colorInput = document.createElement('input');
+      colorInput.type = 'color';
+      colorInput.id = 'user-color';
+      colorInput.className = 'avatar-color-input';
+      colorInput.value = getLocalUserColor();
+      colorInput.title = 'Click to change your color';
+      colorInput.oninput = (e) => {
+        changeUserColor(e.target.value);
+      };
+      el.appendChild(colorInput);
+    }
+
     usersContainer.appendChild(el);
   });
 

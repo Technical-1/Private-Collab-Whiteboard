@@ -77,6 +77,28 @@
         </svg>
         <span>Invite</span>
       </button>
+      <button id="add-encryption" class="header-action-btn" title="Encrypt">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+          <path d="M7 11V7a5 5 0 0 1 9.9-1"/>
+        </svg>
+        <span>Encrypt</span>
+      </button>
+      <button id="change-password" class="header-action-btn u-hidden" title="Change password">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+        <span>Change password</span>
+      </button>
+      <button id="save-image" class="header-action-btn" title="Save image">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+          <polyline points="7 10 12 15 17 10"/>
+          <line x1="12" y1="15" x2="12" y2="3"/>
+        </svg>
+        <span>Save</span>
+      </button>
     </div>
   </header>
 
@@ -259,16 +281,6 @@
       <div id="presence" class="presence-cluster"></div>
       <!-- Glass icon bar (top-right) -->
       <div id="room-actions" class="room-actions floating-panel">
-      <label class="action-icon color-swatch" title="Your color">
-        <input type="color" id="user-color" value="#6366f1">
-      </label>
-      <button id="save-image" class="action-icon" title="Save image">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-          <polyline points="7 10 12 15 17 10"/>
-          <line x1="12" y1="15" x2="12" y2="3"/>
-        </svg>
-      </button>
       <button id="extract-text" class="action-icon" title="Extract text">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <polyline points="4 7 4 4 20 4 20 7"/>
@@ -282,17 +294,6 @@
           <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/>
           <path d="M10 11v6M14 11v6"/>
           <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
-        </svg>
-      </button>
-      <button id="add-encryption" class="action-icon" title="Add encryption">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-          <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-        </svg>
-      </button>
-      <button id="change-password" class="action-icon u-hidden" title="Change password">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
         </svg>
       </button>
     </div>

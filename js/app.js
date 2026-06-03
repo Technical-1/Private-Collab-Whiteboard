@@ -153,14 +153,7 @@ async function main() {
   setCursorsContainer(document.getElementById('cursors'));
   setBoardsContainer(document.getElementById('boards'));
 
-  // Setup color picker
-  const colorPicker = document.getElementById('user-color');
-  if (colorPicker) {
-    colorPicker.value = color;
-    colorPicker.addEventListener('input', (e) => {
-      changeUserColor(e.target.value);
-    });
-  }
+  // Color picker is now handled in awareness.js (overlaid on the local avatar bubble).
 
   // Setup board manager
   boardManager = setupBoardManager(boards, awareness, (boardName) => {
@@ -893,11 +886,11 @@ function updateEncryptionIndicator(isEncrypted, isOwner = false) {
   const changePasswordBtn = document.getElementById('change-password');
 
   if (addEncryptionBtn) {
-    addEncryptionBtn.style.display = isEncrypted ? 'none' : 'block';
+    addEncryptionBtn.style.display = isEncrypted ? 'none' : 'inline-flex';
   }
   if (changePasswordBtn) {
     // Change Password only visible to encrypted-room owners
-    changePasswordBtn.style.display = (isEncrypted && (isOwner || document.body.dataset.role === 'owner')) ? 'block' : 'none';
+    changePasswordBtn.style.display = (isEncrypted && (isOwner || document.body.dataset.role === 'owner')) ? 'inline-flex' : 'none';
   }
 }
 
