@@ -1120,6 +1120,10 @@ function setupZoomPanControls() {
   const zoomOutBtn = document.getElementById('zoom-out');
   const zoomFitBtn = document.getElementById('zoom-fit');
 
+  // Reliable affordance for the shortcuts panel (the `?` key was flaky across setups).
+  const helpBtn = document.getElementById('help-btn');
+  if (helpBtn) helpBtn.addEventListener('click', () => showKeyboardShortcuts());
+
   if (zoomInBtn) {
     zoomInBtn.addEventListener('click', () => {
       const viewport = getViewport();
