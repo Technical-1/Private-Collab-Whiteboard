@@ -141,7 +141,8 @@ async function main() {
   });
 
   // Initialize user awareness with callback for live drawing updates.
-  const { color } = initializeAwareness(awareness, userName, () => {
+  // (color is owned by awareness now — the picker lives on the local avatar)
+  initializeAwareness(awareness, userName, () => {
     // Redraw canvas when other users' awareness changes (for live drawing preview)
     if (drawingController) {
       drawingController.redraw();
