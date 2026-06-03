@@ -263,7 +263,6 @@ function resetDrawingState() {
   }
 
   selectedIds.clear();
-  notifySelectionChange();
   hoveredId = null;
   isDragging = false;
   dragStartX = 0;
@@ -415,47 +414,6 @@ export function setupDrawing(canvasEl, boardsMap, awarenessInstance, getBoardFn)
     getSelectedIds: () => selectedIds,
     clearSelection,
     cleanup, // Allow external cleanup calls
-    /**
-     * Apply a property change to every selected (non-locked) shape in one
-     * Y.js transaction so the whole batch lands as a single undo step.
-     * @param {string} property - Shape property key (e.g. 'strokeWidth')
-     * @param {*} value - New value
-     */
-    updateSelectedShapesProperty(property, value) {
-      if (!canMutate()) return;
-      if (selectedIds.size === 0) return;
-
-      const board = boards.get(getCurrentBoard());
-      if (!board) return;
-
-      const run = () => {
-        selectedIds.forEach(id => {
-          const index = findShapeIndex(id);
-          if (index === -1) return;
-          const shape = board.get(index);
-          if (shape.locked) return; // respect lock
-          const updated = { ...shape, [property]: value };
-          board.delete(index);
-          board.insert(index, [updated]);
-        });
-      };
-
-      if (board.doc) board.doc.transact(run);
-      else run();
-
-      redrawCanvas();
-    },
-    /**
-     * Return the first selected shape object (or null if nothing is selected).
-     * Used by app.js to populate the option-panel controls.
-     * @returns {Object|null}
-     */
-    getSelectedShape() {
-      if (selectedIds.size === 0) return null;
-      const firstId = selectedIds.values().next().value;
-      return findShapeById(firstId);
-    },
-
     /**
      * Attempt to scroll an overflowing sticky note under the given world coordinates.
      * Called from the wheel handler in app.js BEFORE the zoom logic runs.
@@ -1124,16 +1082,6 @@ function handleTouchEnd(e) {
 
 // ============ Selection Functions ============
 
-/**
- * Centralized helper: dispatch the selection-change window event.
- * All paths that mutate selectedIds must call this so app.js stays in sync.
- */
-function notifySelectionChange() {
-  if (typeof window !== 'undefined') {
-    window.dispatchEvent(new CustomEvent('selection-change', { detail: { count: selectedIds.size } }));
-  }
-}
-
 function setSelected(id, addToSelection = false) {
   if (addToSelection) {
     // Toggle selection if shift is held
@@ -1147,7 +1095,6 @@ function setSelected(id, addToSelection = false) {
     selectedIds.clear();
     selectedIds.add(id);
   }
-  notifySelectionChange();
   redrawCanvas();
 }
 
@@ -1155,7 +1102,6 @@ function clearSelection() {
   selectedIds.clear();
   hoveredId = null;
   hideShapeControls(true); // Force close popup when selection is cleared
-  notifySelectionChange();
   redrawCanvas();
 }
 
@@ -1269,7 +1215,6 @@ export function pasteShapes(offsetX = 20, offsetY = 20) {
   if (board.doc) board.doc.transact(doPaste);
   else doPaste();
 
-  notifySelectionChange();
   redrawCanvas();
   return pasted;
 }
@@ -2166,7 +2111,6 @@ function deleteShape(shapeId) {
     };
     if (board.doc) board.doc.transact(run);
     else run();
-    notifySelectionChange();
   }
 }
 

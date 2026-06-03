@@ -304,28 +304,6 @@ async function main() {
     };
   }
 
-  // React to selection changes: populate controls from the selected shape
-  // (count >= 1) or restore tool defaults (count === 0).
-  window.addEventListener('selection-change', (e) => {
-    const { count } = e.detail;
-    if (count >= 1) {
-      populateControlsFromSelection();
-    } else {
-      loadToolSettings(currentToolName);
-      updateOptionsVisibility(currentToolName);
-      // Restore the stroke-style button highlight to the drawing module's live default.
-      const defaultStyle = drawingController.getStrokeStyle();
-      document.querySelectorAll('.style-btn').forEach(b => {
-        b.classList.toggle('active', b.dataset.style === defaultStyle);
-      });
-      // Restore arrowhead button highlight to the drawing module's live default.
-      const defaultHeads = drawingController.getArrowHeads();
-      document.querySelectorAll('.arrowhead-btn').forEach(b => {
-        b.classList.toggle('active', b.dataset.heads === defaultHeads);
-      });
-    }
-  });
-
   // Initialize UI for default tool (select)
   switchTool('select');
 
@@ -623,26 +601,16 @@ function setStrokeWidth(width) {
   }
 }
 
-// ============ Selection-aware option helpers ============
-// Each helper checks whether shapes are selected. If so, the control edits
-// the selected shape(s); otherwise it sets the new-shape default (old behavior).
+// ============ New-shape default option helpers ============
+// These helpers ONLY set the default for the next shape drawn.
+// Per-shape editing is exclusively in the ⚙ gear popup (showShapeSettingsPopup / updateShapeProperty).
 
 function applyStrokeWidth(width) {
-  if (drawingController.getSelectedIds().size > 0) {
-    drawingController.updateSelectedShapesProperty('strokeWidth', width);
-    // Also keep the slider/span in sync (already done by the caller for oninput)
-    updateStrokePresetHighlight(width);
-  } else {
-    setStrokeWidth(width);
-  }
+  setStrokeWidth(width);
 }
 
 function applyStrokeStyle(style) {
-  if (drawingController.getSelectedIds().size > 0) {
-    drawingController.updateSelectedShapesProperty('strokeStyle', style);
-  } else {
-    drawingController.setStrokeStyle(style);
-  }
+  drawingController.setStrokeStyle(style);
 }
 
 /**
@@ -650,112 +618,27 @@ function applyStrokeStyle(style) {
  * @param {string} currentColor - current value of the fill-color input
  */
 function applyFillEnabled(enabled, currentColor) {
-  if (drawingController.getSelectedIds().size > 0) {
-    // Mirror what the gear popup does: null = no fill, color string = fill
-    drawingController.updateSelectedShapesProperty('fillColor', enabled ? currentColor : null);
-  } else {
-    drawingController.setFillEnabled(enabled);
-    saveCurrentToolSettings();
-  }
+  drawingController.setFillEnabled(enabled);
+  saveCurrentToolSettings();
 }
 
 function applyFillColor(color) {
-  if (drawingController.getSelectedIds().size > 0) {
-    drawingController.updateSelectedShapesProperty('fillColor', color);
-  } else {
-    drawingController.setFillColor(color);
-    saveCurrentToolSettings();
-  }
+  drawingController.setFillColor(color);
+  saveCurrentToolSettings();
 }
 
 function applyFontSize(size) {
-  if (drawingController.getSelectedIds().size > 0) {
-    drawingController.updateSelectedShapesProperty('fontSize', size);
-  } else {
-    drawingController.setFontSize(size);
-    saveCurrentToolSettings();
-  }
+  drawingController.setFontSize(size);
+  saveCurrentToolSettings();
 }
 
 function applyFontFamily(family) {
-  if (drawingController.getSelectedIds().size > 0) {
-    drawingController.updateSelectedShapesProperty('fontFamily', family);
-  } else {
-    drawingController.setFontFamily(family);
-    saveCurrentToolSettings();
-  }
+  drawingController.setFontFamily(family);
+  saveCurrentToolSettings();
 }
 
 function applyArrowHeads(value) {
-  if (drawingController.getSelectedIds().size > 0) {
-    drawingController.updateSelectedShapesProperty('arrowHeads', value);
-  } else {
-    drawingController.setArrowHeads(value);
-  }
-}
-
-/**
- * When a selection is active, populate the bottom-panel option controls
- * (thickness, fill, font, stroke style) from the first selected shape,
- * and show/hide the right option sections for that shape's tool.
- */
-function populateControlsFromSelection() {
-  const shape = drawingController.getSelectedShape();
-  if (!shape) return;
-
-  const tool = shape.tool;
-
-  // Show option sections appropriate to the selected shape's tool
-  updateOptionsVisibility(tool);
-
-  // Stroke width
-  if (shape.strokeWidth != null) {
-    const input = document.getElementById('stroke-width');
-    const span = document.getElementById('stroke-value');
-    if (input) {
-      input.value = shape.strokeWidth;
-      updateStrokePresetHighlight(shape.strokeWidth);
-    }
-    if (span) span.textContent = `${shape.strokeWidth}px`;
-  }
-
-  // Stroke style — highlight the matching style button
-  if (shape.strokeStyle) {
-    document.querySelectorAll('.style-btn').forEach(b => {
-      b.classList.toggle('active', b.dataset.style === shape.strokeStyle);
-    });
-  }
-
-  // Fill
-  const fillEnabledInput = document.getElementById('fill-enabled');
-  const fillColorInput = document.getElementById('fill-color');
-  if (fillEnabledInput && fillColorInput) {
-    const hasFill = !!shape.fillColor;
-    fillEnabledInput.checked = hasFill;
-    fillColorInput.disabled = !hasFill;
-    if (shape.fillColor) fillColorInput.value = shape.fillColor;
-  }
-
-  // Font
-  const fontSizeInput = document.getElementById('font-size');
-  const fontSizeSpan = document.getElementById('font-size-value');
-  if (fontSizeInput && shape.fontSize != null) {
-    fontSizeInput.value = shape.fontSize;
-    if (fontSizeSpan) fontSizeSpan.textContent = `${shape.fontSize}px`;
-  }
-  const fontFamilySelect = document.getElementById('font-family');
-  if (fontFamilySelect && shape.fontFamily) {
-    fontFamilySelect.value = shape.fontFamily;
-  }
-
-  // Arrowheads — highlight the matching button from the selected shape.
-  // Fall back to 'end' for older connectors/arrows that pre-date the field.
-  if (shape.arrowHeads != null || shape.tool === 'connector' || shape.tool === 'arrow') {
-    const heads = shape.arrowHeads || 'end';
-    document.querySelectorAll('.arrowhead-btn').forEach(b => {
-      b.classList.toggle('active', b.dataset.heads === heads);
-    });
-  }
+  drawingController.setArrowHeads(value);
 }
 
 function updateStrokePresetHighlight(width) {
@@ -903,7 +786,7 @@ function setupKeyboardShortcuts() {
     if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
 
     // Undo: Ctrl+Z (or Cmd+Z on Mac)
-    if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z' && !e.shiftKey) {
       e.preventDefault();
       if (!readOnly && undoManagerInstance) {
         undo();
@@ -913,7 +796,7 @@ function setupKeyboardShortcuts() {
     }
 
     // Redo: Ctrl+Y or Ctrl+Shift+Z (or Cmd variants on Mac)
-    if ((e.ctrlKey || e.metaKey) && (e.key === 'y' || (e.key === 'z' && e.shiftKey))) {
+    if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'y' || (e.key.toLowerCase() === 'z' && e.shiftKey))) {
       e.preventDefault();
       if (!readOnly && undoManagerInstance) {
         redo();
