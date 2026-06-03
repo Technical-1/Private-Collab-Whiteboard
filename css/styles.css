@@ -798,11 +798,12 @@ body {
 /* Floating Panels */
 .floating-panel {
   position: fixed;
-  background: rgba(26, 26, 46, 0.95);
-  backdrop-filter: blur(16px);
-  border: 1px solid var(--border);
+  background: rgba(20, 20, 31, 0.6);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  backdrop-filter: blur(20px) saturate(160%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
   border-radius: 14px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
   z-index: 90;
 }
 
