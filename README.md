@@ -13,9 +13,12 @@ A real-time collaborative whiteboard application with peer-to-peer synchronizati
 - **User presence** - see who's online with color-coded identities
 
 ### Drawing Tools
-- **Freehand drawing** - natural pencil/pen tool
-- **Shapes** - lines, rectangles, and circles
+- **Freehand drawing** - natural pencil/pen tool, plus a translucent **highlighter**
+- **Shapes** - lines, arrows, rectangles, circles, ellipses, diamonds, and triangles, with solid/dashed/dotted strokes and optional fills
+- **Connectors** - draw an arrow from one shape to another; the endpoints stay bound and re-route as you move either shape
+- **Sticky notes** - color-coded notes with wrapped, scrollable text
 - **Text tool** - inline text editing directly on canvas
+- **Laser pointer** - ephemeral pointer trail for presentations (not saved to the board)
 - **Eraser** - remove shapes with a click
 - **Select tool** - move, resize, and manipulate shapes
 
@@ -29,8 +32,9 @@ A real-time collaborative whiteboard application with peer-to-peer synchronizati
 - **Multi-select** - Shift+click to select multiple shapes
 - **Copy/Paste/Duplicate** - standard clipboard operations
 - **Lock shapes** - prevent accidental modifications
-- **Multiple boards** - organize content across different boards
+- **Multiple boards** - create, switch, clear, and delete boards within a room
 - **Extract text** - export all text grouped by user or position
+- **Save as PNG / PDF** - an interactive export modal lets you pan and zoom to frame the shot, then save a retina-resolution PNG or a single-page PDF
 
 ### Security & Privacy
 - **End-to-end encryption** - password-protected rooms encrypt all traffic with AES-256-GCM; the relay only ever sees ciphertext
@@ -47,6 +51,7 @@ A real-time collaborative whiteboard application with peer-to-peer synchronizati
 - **Sync Engine**: [Y.js](https://yjs.dev/) (CRDT library) over a custom signed-update transport
 - **WebSocket Server**: [PartyKit](https://partykit.io/) (a ~35-line broadcast relay)
 - **Crypto**: Web Crypto API — AES-256-GCM for confidentiality, ECDSA P-256 for authorization
+- **Export**: [jsPDF](https://github.com/parallax/jsPDF) for PDF output; native canvas `toDataURL` for PNG
 - **Build Tool**: [Vite](https://vitejs.dev/) (multi-page build)
 - **Tests**: [Vitest](https://vitest.dev/)
 - **CI/CD**: GitHub Actions (Vitest + build gate); [Vercel](https://vercel.com/) for the frontend, PartyKit for the relay
@@ -124,10 +129,18 @@ npm run deploy:party
 |----------|--------|
 | `V` | Select tool |
 | `P` | Pencil/Freehand |
+| `H` | Highlighter |
 | `L` | Line tool |
+| `A` | Arrow tool |
 | `R` | Rectangle tool |
 | `C` | Circle tool |
+| `O` | Ellipse tool |
+| `D` | Diamond tool |
+| `Y` | Triangle tool |
 | `T` | Text tool |
+| `S` | Sticky note |
+| `G` | Connector tool |
+| `Q` | Laser pointer |
 | `E` | Eraser |
 | `Ctrl/⌘ + Z` | Undo |
 | `Ctrl/⌘ + Y` | Redo |
@@ -160,9 +173,14 @@ npm run deploy:party
 │   ├── room-manager.js    # Capability links (owner/editor/viewer), rotation
 │   ├── snapshot-store.js  # Per-epoch snapshot cache (localStorage, pruned)
 │   ├── awareness.js       # User presence & cursors
+│   ├── laser-trail.js     # Ephemeral laser-pointer trail (presence-only, never stored)
 │   ├── drawing.js         # Canvas rendering & interactions
+│   ├── draw-geometry.js   # Pure shape geometry (hit-testing, polygons, arrowheads)
+│   ├── connector-geometry.js # Connector anchor resolution & re-routing
+│   ├── text-wrap.js       # Word-wrap + scroll math for text and sticky notes
+│   ├── keyboard-intent.js # Pure keyboard-shortcut intent decisions (unit-testable)
 │   ├── shape-schema.js    # Sanitize untrusted shapes before DOM interpolation
-│   ├── boards.js          # Multi-board management
+│   ├── boards.js          # Multi-board management (create / switch / clear / delete)
 │   ├── board-history.js   # Board visit history (localStorage)
 │   ├── undo-redo.js       # Undo/redo with Y.UndoManager
 │   ├── modal.js           # Modal dialog system
