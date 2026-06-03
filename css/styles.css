@@ -523,6 +523,9 @@ body {
   max-width: 600px;
   margin: 0 auto;
   text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   background: linear-gradient(135deg, rgba(99, 102, 241, 0.1), rgba(139, 92, 246, 0.1));
   border: 1px solid rgba(99, 102, 241, 0.2);
   border-radius: 24px;
@@ -596,6 +599,271 @@ body {
   font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Mono', 'Droid Sans Mono', monospace;
   font-size: 0.85rem;
   letter-spacing: 0.02em;
+}
+
+/* Logo as a link (subpages link back home) */
+a.logo {
+  text-decoration: none;
+}
+
+/* Active nav tab */
+.nav-link-active {
+  color: var(--text-primary);
+}
+
+/* Footnote under a features grid (e.g. link to How it works) */
+.features-footnote {
+  position: relative;
+  z-index: 1;
+  text-align: center;
+  color: var(--text-secondary);
+  margin-top: 40px;
+  font-size: 1.05rem;
+}
+
+.features-footnote a {
+  color: var(--primary-light);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.features-footnote a:hover {
+  text-decoration: underline;
+}
+
+/* ============================================
+   HOW IT WORKS PAGE
+   ============================================ */
+.how-hero {
+  position: relative;
+  z-index: 1;
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 60px 48px 24px;
+  text-align: center;
+}
+
+.how-title {
+  font-size: 3.5rem;
+  font-weight: 800;
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+  margin: 24px 0 20px;
+}
+
+.how-subtitle {
+  font-size: 1.2rem;
+  color: var(--text-secondary);
+  max-width: 720px;
+  margin: 0 auto;
+}
+
+/* Shared section sizing for the how-it-works page */
+.how-flow,
+.how-deep,
+.how-toolkit {
+  position: relative;
+  z-index: 1;
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 48px 48px 32px;
+}
+
+/* The big picture — numbered flow */
+.flow-steps {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 20px;
+}
+
+.flow-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 24px;
+  transition: all 0.3s ease;
+}
+
+.flow-step:hover {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: rgba(255, 255, 255, 0.15);
+  transform: translateY(-4px);
+}
+
+.flow-num {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 10px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, var(--gradient-1), var(--gradient-2));
+}
+
+.flow-step h3 {
+  font-size: 1.05rem;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.flow-step p {
+  color: var(--text-secondary);
+  font-size: 0.92rem;
+}
+
+/* Under the hood — deep-dive cards */
+.deep-list {
+  max-width: 880px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.deep-card {
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 28px 32px;
+  transition: border-color 0.3s ease;
+}
+
+.deep-card:hover {
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.deep-card h3 {
+  font-size: 1.3rem;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.deep-card > p {
+  color: var(--text-secondary);
+  font-size: 1rem;
+  line-height: 1.7;
+}
+
+.deep-dive {
+  margin-top: 18px;
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+
+.deep-dive summary {
+  list-style: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--primary-light);
+  font-weight: 600;
+  font-size: 0.95rem;
+  user-select: none;
+}
+
+.deep-dive summary::-webkit-details-marker {
+  display: none;
+}
+
+.deep-dive summary::before {
+  content: '+';
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+  background: rgba(99, 102, 241, 0.15);
+  font-weight: 700;
+  line-height: 1;
+}
+
+.deep-dive[open] summary::before {
+  content: '\2013'; /* en dash */
+}
+
+.deep-dive[open] summary {
+  margin-bottom: 12px;
+}
+
+.deep-dive p {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  line-height: 1.75;
+}
+
+.how-page code {
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Fira Mono', monospace;
+  font-size: 0.85em;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 1px 6px;
+  color: var(--text-primary);
+}
+
+/* What's in the box */
+.toolkit-list {
+  list-style: none;
+  max-width: 880px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px 32px;
+}
+
+.toolkit-list li {
+  position: relative;
+  padding-left: 28px;
+  color: var(--text-secondary);
+  font-size: 0.98rem;
+  line-height: 1.6;
+}
+
+.toolkit-list li::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.55em;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, var(--gradient-1), var(--gradient-2));
+}
+
+.toolkit-list strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+@media (max-width: 768px) {
+  .how-title {
+    font-size: 2.5rem;
+  }
+
+  .how-hero,
+  .how-flow,
+  .how-deep,
+  .how-toolkit {
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+
+  .deep-card {
+    padding: 24px;
+  }
+
+  .toolkit-list {
+    grid-template-columns: 1fr;
+  }
 }
 
 /* ============================================
@@ -1501,8 +1769,17 @@ body {
   z-index: 1;
 }
 
-.empty-state svg {
+.empty-state > svg {
+  width: 64px;
+  height: 64px;
   opacity: 0.4;
+}
+
+/* The empty-state container is pointer-events:none (it can overlay a canvas);
+   re-enable clicks on its call-to-action button. */
+.empty-state .btn {
+  pointer-events: auto;
+  margin-top: 8px;
 }
 
 .empty-state p {
@@ -2979,7 +3256,7 @@ body:not(.read-only-mode) .read-only-banner {
       padding: 80px 24px;
     }
 
-    .empty-state svg {
+    .empty-state > svg {
       width: 80px;
       height: 80px;
       color: #475569;

@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>How it works - Whiteboard</title>
+
+  <!-- SEO Meta Tags -->
+  <meta name="description" content="How the Private Collab Whiteboard works: conflict-free real-time sync, a relay that only sees ciphertext, end-to-end encryption, and cryptographically enforced view-only access.">
+  <meta name="keywords" content="whiteboard, how it works, end-to-end encryption, CRDT, peer-to-peer, capability links, view-only, privacy">
+  <meta name="author" content="Whiteboard">
+  <meta name="robots" content="index, follow">
+  <meta name="theme-color" content="#6366f1">
+
+  <!-- Open Graph / Facebook -->
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://private-collab-whiteboard.vercel.app/how-it-works">
+  <meta property="og:title" content="How it works - Whiteboard">
+  <meta property="og:description" content="A whiteboard with no backend and no database. See exactly how real-time sync, end-to-end encryption, and cryptographic view-only access work.">
+  <meta property="og:image" content="https://private-collab-whiteboard.vercel.app/og-image.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:site_name" content="Whiteboard">
+  <meta property="og:locale" content="en_US">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:url" content="https://private-collab-whiteboard.vercel.app/how-it-works">
+  <meta name="twitter:title" content="How it works - Whiteboard">
+  <meta name="twitter:description" content="A whiteboard with no backend and no database. See exactly how real-time sync, end-to-end encryption, and cryptographic view-only access work.">
+  <meta name="twitter:image" content="https://private-collab-whiteboard.vercel.app/og-image.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png">
+  <link rel="manifest" href="/site.webmanifest">
+
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body class="landing-page how-page">
+  <!-- Animated background -->
+  <div class="bg-gradient"></div>
+  <div class="bg-grid"></div>
+
+  <!-- Navigation -->
+  <nav class="nav">
+    <a href="/" class="logo">
+      <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+        <rect x="2" y="2" width="28" height="28" rx="6" stroke="currentColor" stroke-width="2.5"/>
+        <path d="M8 16L12 12L16 16L20 10L24 14" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="12" cy="20" r="2" fill="currentColor"/>
+      </svg>
+      <span>Whiteboard</span>
+    </a>
+    <div class="nav-links">
+      <a href="/#features" class="nav-link">Features</a>
+      <a href="/how-it-works" class="nav-link nav-link-active" aria-current="page">How it works</a>
+      <a href="/boards" id="my-boards-link" class="nav-link my-boards-link">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="7" height="7"/>
+          <rect x="14" y="3" width="7" height="7"/>
+          <rect x="14" y="14" width="7" height="7"/>
+          <rect x="3" y="14" width="7" height="7"/>
+        </svg>
+        My Boards
+        <span id="board-count-badge" class="board-count-badge"></span>
+      </a>
+    </div>
+  </nav>
+
+  <!-- Hero -->
+  <section class="how-hero">
+    <div class="hero-badge">
+      <span class="badge-dot"></span>
+      No backend &bull; No database
+    </div>
+    <h1 class="how-title">How it <span class="gradient-text">works</span></h1>
+    <p class="how-subtitle">
+      Your drawings live in your browser, sync directly between collaborators, and
+      &mdash; the moment you set a password &mdash; are end-to-end encrypted, so even
+      the relay that ferries them between people can't read a thing. Here's exactly
+      how that holds together, from the top down.
+    </p>
+  </section>
+
+  <!-- The big picture -->
+  <section class="how-flow">
+    <div class="features-header">
+      <h2>The big picture</h2>
+      <p>What happens between your pen and everyone else's screen.</p>
+    </div>
+
+    <ol class="flow-steps">
+      <li class="flow-step">
+        <span class="flow-num">1</span>
+        <div>
+          <h3>You draw</h3>
+          <p>Your stroke becomes a shape in a document shared by everyone in the room.</p>
+        </div>
+      </li>
+      <li class="flow-step">
+        <span class="flow-num">2</span>
+        <div>
+          <h3>The CRDT records it</h3>
+          <p>Y.js turns the change into a small, conflict-free update &mdash; no central server has to referee.</p>
+        </div>
+      </li>
+      <li class="flow-step">
+        <span class="flow-num">3</span>
+        <div>
+          <h3>Sign &amp; encrypt</h3>
+          <p>In an encrypted room, the update is signed and AES-256-GCM encrypted right in your browser.</p>
+        </div>
+      </li>
+      <li class="flow-step">
+        <span class="flow-num">4</span>
+        <div>
+          <h3>The relay broadcasts</h3>
+          <p>A tiny relay forwards the bytes to everyone else. In encrypted rooms it only ever sees ciphertext.</p>
+        </div>
+      </li>
+      <li class="flow-step">
+        <span class="flow-num">5</span>
+        <div>
+          <h3>Peers verify</h3>
+          <p>Each peer decrypts the frame and checks the signature before it's allowed to change anything.</p>
+        </div>
+      </li>
+      <li class="flow-step">
+        <span class="flow-num">6</span>
+        <div>
+          <h3>Merge &amp; render</h3>
+          <p>Y.js merges the verified update and the canvas redraws &mdash; instantly, in order, on every screen.</p>
+        </div>
+      </li>
+      <li class="flow-step">
+        <span class="flow-num">7</span>
+        <div>
+          <h3>Persist</h3>
+          <p>Everything is saved locally to IndexedDB, so your work is there next time &mdash; even offline.</p>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <!-- Under the hood -->
+  <section class="how-deep">
+    <div class="features-header">
+      <h2>Under the hood</h2>
+      <p>Each piece in plain language &mdash; open &ldquo;Go deeper&rdquo; for the real internals.</p>
+    </div>
+
+    <div class="deep-list">
+      <article class="deep-card">
+        <h3>Real-time sync without a server</h3>
+        <p>
+          Two people can draw at the same instant and never clobber each other's work.
+          That's because the shared document is a CRDT (Conflict-free Replicated Data
+          Type): every change carries enough information to merge cleanly with every
+          other change, in any order, with no server deciding who wins.
+        </p>
+        <details class="deep-dive">
+          <summary>Go deeper</summary>
+          <p>
+            The document is a <code>Y.Doc</code> from Y.js: a <code>Y.Map</code> of
+            boards, each holding a <code>Y.Array</code> of shapes. Concurrent edits to
+            the same field resolve last-writer-wins per property, while edits to
+            different properties (one person resizes, another recolors) both survive.
+            Because merging is purely local math, the same model powers offline editing
+            and reconnection. Cursors, names, and live drawing previews ride a separate
+            ephemeral &ldquo;awareness&rdquo; channel, so presence never pollutes the
+            saved document.
+          </p>
+        </details>
+      </article>
+
+      <article class="deep-card">
+        <h3>The relay is deliberately dumb</h3>
+        <p>
+          There is no application server and no database. The only thing in the middle
+          is a ~35-line relay whose entire job is to forward a message from one
+          collaborator to the others. It runs no app logic, stores nothing, and &mdash;
+          in encrypted rooms &mdash; can't read a single byte it carries.
+        </p>
+        <details class="deep-dive">
+          <summary>Go deeper</summary>
+          <p>
+            Sync runs over a PartyKit WebSocket relay (this app does <strong>not</strong>
+            use WebRTC &mdash; a broadcast relay reaches reliably through firewalls and
+            NATs where peer-to-peer mesh stalls). In an encrypted room, <em>every</em>
+            frame is ciphertext before it leaves the browser: document updates,
+            full-state snapshots, cursor positions, names, even the live drawing
+            preview. The one thing advertised in the clear is a small &ldquo;this room
+            is encrypted&rdquo; marker, so someone who arrives without a key knows to
+            ask for an invite link instead of joining an unreadable room.
+          </p>
+        </details>
+      </article>
+
+      <article class="deep-card">
+        <h3>End-to-end encryption</h3>
+        <p>
+          Set a password and the room becomes end-to-end encrypted. The password never
+          travels to any server &mdash; it's turned into an encryption key inside your
+          browser, and only people who hold it can read what's drawn.
+        </p>
+        <details class="deep-dive">
+          <summary>Go deeper</summary>
+          <p>
+            The password is stretched into a key with PBKDF2 (600,000 iterations of
+            SHA-256, per current OWASP guidance) against a random 16-byte salt minted
+            for that room, then used for AES-256-GCM with a fresh random IV per message.
+            Both the salt and the iteration count travel inside the invite link, so
+            every peer derives the identical key &mdash; and the count is clamped to a
+            safe range on decode, so a hand-edited link can neither weaken the
+            derivation below the legacy floor nor pin you to a multi-second one. No
+            key-exchange protocol is needed: the secret is shared out of band, embedded
+            in the link you send.
+          </p>
+        </details>
+      </article>
+
+      <article class="deep-card">
+        <h3>Capability links &amp; roles</h3>
+        <p>
+          Sharing isn't a single &ldquo;anyone with the URL can edit&rdquo; switch. A
+          room can hand out owner, editor, and view-only invite links, and the link
+          itself carries what you're allowed to do.
+        </p>
+        <details class="deep-dive">
+          <summary>Go deeper</summary>
+          <p>
+            The capability lives in the URL <em>fragment</em> (everything after the
+            <code>#</code>), which browsers never send to a server &mdash; so the relay
+            never sees it. A <strong>viewer</strong> link carries public keys only; an
+            <strong>editor</strong> link adds the editor signing key; an
+            <strong>owner</strong> link adds the owner key on top. The app never emits an
+            owner link &mdash; it stays in the creator's address bar &mdash; so editors
+            can collaborate but can't lock anyone out. A tampered or truncated link
+            fails closed rather than silently dropping you into an editable room.
+          </p>
+        </details>
+      </article>
+
+      <article class="deep-card">
+        <h3>View-only that actually holds</h3>
+        <p>
+          A view-only link can't be bypassed by editing the URL or opening dev tools.
+          Even though a viewer can decrypt and see the board, anything they try to draw
+          is rejected by everyone else &mdash; because they were never given the key
+          needed to author a change.
+        </p>
+        <details class="deep-dive">
+          <summary>Go deeper</summary>
+          <p>
+            In an encrypted room, editors sign each update with a per-epoch ECDSA P-256
+            key, and every peer verifies that signature before applying the change.
+            Viewers simply hold no signing key, so any update they emit fails
+            verification at every honest peer and never lands in the shared document.
+            Hiding the editing UI for viewers is cosmetic &mdash; the real enforcement
+            is the missing key. Each signature also covers the update <em>prefixed by
+            its epoch number</em>, so a signature captured in one epoch can't be
+            replayed after the room rotates.
+          </p>
+        </details>
+      </article>
+
+      <article class="deep-card">
+        <h3>Owner root-of-trust &amp; revocation</h3>
+        <p>
+          With no server to ask &ldquo;is this link still allowed?&rdquo;, revocation is
+          the hard part of a system like this. The answer is a per-room owner key that
+          acts as the root of trust: only the owner can grant editing, and only the
+          owner can take it away.
+        </p>
+        <details class="deep-dive">
+          <summary>Go deeper</summary>
+          <p>
+            The owner's key signs an <em>epoch certificate</em> binding the current
+            editor public key to an epoch number; peers only trust an editor key that a
+            valid owner certificate vouches for, and fail closed otherwise. Changing the
+            password rotates the room: the owner mints epoch N+1 with a fresh editor key
+            and certificate and broadcasts an owner-signed rotate notice. Peers mark the
+            old epoch superseded and stop applying its updates, so anyone holding an old
+            link can no longer produce edits that anyone will accept &mdash; real
+            revocation, with no central authority.
+          </p>
+        </details>
+      </article>
+
+      <article class="deep-card">
+        <h3>Offline-first by default</h3>
+        <p>
+          Lose your connection and you can keep drawing. Your work is saved on your own
+          device the whole time, and quietly merges back in when you reconnect.
+        </p>
+        <details class="deep-dive">
+          <summary>Go deeper</summary>
+          <p>
+            The Y.Doc is persisted to the browser's IndexedDB via y-indexeddb, which is
+            the source of truth for your local state. Edits made while offline are
+            ordinary CRDT updates; on reconnect they merge conflict-free with whatever
+            changed while you were away. A lightweight per-epoch snapshot cache also lets
+            a freshly joined or reconnecting peer bootstrap quickly without waiting on a
+            live editor to be online.
+          </p>
+        </details>
+      </article>
+
+      <article class="deep-card">
+        <h3>Hardened against the shared document</h3>
+        <p>
+          In a collaborative app the risky input isn't a form field &mdash; it's the
+          shared document itself, which arrives from other people. That untrusted data
+          is sanitized before it ever touches the page, with a strict security policy as
+          the backstop.
+        </p>
+        <details class="deep-dive">
+          <summary>Go deeper</summary>
+          <p>
+            Peer-supplied shape fields, names, and presence are run through an
+            allow-list before any of them reach the DOM: colors must be plain hex,
+            numbers must be finite, and unknown tool names collapse to an inert literal.
+            On top of that, a strict Content-Security-Policy (<code>script-src
+            'self'</code>, no inline scripts, <code>base-uri 'none'</code>) means even a
+            missed sink can't execute injected markup. It's defense in depth: sanitize
+            the data, then make the browser refuse to run anything that slips past.
+          </p>
+        </details>
+      </article>
+    </div>
+  </section>
+
+  <!-- What's in the box -->
+  <section class="how-toolkit">
+    <div class="features-header">
+      <h2>What's in the box</h2>
+      <p>The whiteboard you get on top of all that machinery.</p>
+    </div>
+    <ul class="toolkit-list">
+      <li><strong>Drawing tools</strong> &mdash; freehand pen, highlighter, and inline text</li>
+      <li><strong>Shapes &amp; arrows</strong> &mdash; lines, arrows, rectangles, circles, ellipses, diamonds, triangles, with fills and stroke styles</li>
+      <li><strong>Sticky notes</strong> &mdash; color-coded, with wrapped, scrollable text</li>
+      <li><strong>Connectors</strong> &mdash; link shapes with arrows that follow them as they move</li>
+      <li><strong>Laser pointer</strong> &mdash; an ephemeral trail for presenting, never saved</li>
+      <li><strong>Select &amp; arrange</strong> &mdash; multi-select, move, resize, copy, paste, duplicate, lock</li>
+      <li><strong>Infinite canvas</strong> &mdash; pan, zoom, and fit-to-content</li>
+      <li><strong>Undo / redo</strong> &mdash; CRDT-aware, so it only ever touches your own changes</li>
+      <li><strong>Multiple boards</strong> &mdash; create, switch, clear, and delete</li>
+      <li><strong>Export</strong> &mdash; frame an interactive preview, then save PNG or PDF</li>
+    </ul>
+  </section>
+
+  <!-- CTA Section -->
+  <section class="cta">
+    <div class="cta-content">
+      <h2>See it for yourself</h2>
+      <p>Create a room and invite your team. It takes 2 seconds.</p>
+      <a href="/" class="btn btn-primary btn-large">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M12 5v14M5 12h14"/>
+        </svg>
+        Start Drawing
+      </a>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="footer-content">
+      <div class="footer-logo">
+        <svg width="24" height="24" viewBox="0 0 32 32" fill="none">
+          <rect x="2" y="2" width="28" height="28" rx="6" stroke="currentColor" stroke-width="2.5"/>
+          <path d="M8 16L12 12L16 16L20 10L24 14" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <span>Whiteboard</span>
+      </div>
+      <p class="footer-tagline">Your data stays yours. Always.</p>
+      <a href="https://jacobkanfer.com" target="_blank" rel="noopener noreferrer" class="footer-author">
+        <img src="/jk-logo.svg" alt="JK" width="28" height="28">
+        <span>Built by Jacob Kanfer</span>
+      </a>
+    </div>
+  </footer>
+
+  <script type="module" src="/js/how-it-works-home.js"></script>
+</body>
+</html>
