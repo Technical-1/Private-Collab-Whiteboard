@@ -2926,7 +2926,7 @@ body:not(.read-only-mode) .read-only-banner {
   border: none;
   outline: none;
   resize: none;
-  overflow: hidden;
+  overflow-y: auto;
   padding: 12px;                 /* matches drawSticky pad */
   border-radius: 6px;            /* matches drawSticky roundRect */
   background: var(--sticky-fill, #fff8b8);
