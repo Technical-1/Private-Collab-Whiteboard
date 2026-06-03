@@ -357,8 +357,7 @@ async function main() {
   };
 
   // Wire up share link
-  const shareLink = getShareableLink();
-  document.getElementById('share-link').value = shareLink;
+  document.getElementById('share-link').value = getShareableLink();
 
   // Show/hide password controls based on encryption status
   const passwordControls = document.getElementById('password-controls');
@@ -382,19 +381,7 @@ async function main() {
   const inviteBtn = document.getElementById('invite-btn');
   if (inviteBtn) {
     inviteBtn.onclick = async () => {
-      const link = getShareableLink();
-
-      // The modal asks for an updated link when the permission radio changes.
-      const handleLinkUpdate = (e) => {
-        const { permission } = e.detail;
-        const newLink = getShareableLink(permission);
-        window.dispatchEvent(new CustomEvent('invite-link-updated', { detail: { link: newLink } }));
-      };
-      window.addEventListener('update-invite-link', handleLinkUpdate);
-
-      await showInviteModal(link, isEncrypted);
-
-      window.removeEventListener('update-invite-link', handleLinkUpdate);
+      await showInviteModal((permission) => getShareableLink(permission), isEncrypted);
     };
   }
 

@@ -177,7 +177,7 @@ export function showAlert(title, description = '') {
 }
 
 // Custom modal for inviting users with role selection
-export function showInviteModal(currentLink, isEncrypted) {
+export function showInviteModal(linkFor, isEncrypted) {
   return new Promise((resolve) => {
     currentResolve = resolve;
 
@@ -186,7 +186,7 @@ export function showInviteModal(currentLink, isEncrypted) {
         <div class="modal-input-group">
           <label>Share Link</label>
           <div class="share-link-row">
-            <input type="text" id="modal-share-link" class="modal-input" value="${escapeHtml(currentLink)}" readonly>
+            <input type="text" id="modal-share-link" class="modal-input" value="" readonly>
             <button class="modal-copy-btn" id="modal-copy-link" title="Copy">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <rect x="9" y="9" width="13" height="13" rx="2"/>
@@ -235,26 +235,12 @@ export function showInviteModal(currentLink, isEncrypted) {
     const linkInput = modalContainer.querySelector('#modal-share-link');
     const permissionRadios = modalContainer.querySelectorAll('input[name="permission"]');
 
-    // Function to update the link based on the selected permission.
-    const updateLink = () => {
+    const refreshLink = () => {
       const permission = modalContainer.querySelector('input[name="permission"]:checked').value;
-      const event = new CustomEvent('update-invite-link', {
-        detail: { permission },
-      });
-      window.dispatchEvent(event);
+      linkInput.value = linkFor(permission);
     };
-
-    permissionRadios.forEach(radio => {
-      radio.addEventListener('change', updateLink);
-    });
-    // Listen for link updates
-    const linkUpdateHandler = (e) => {
-      linkInput.value = e.detail.link;
-    };
-    window.addEventListener('invite-link-updated', linkUpdateHandler);
-    // Remove the window listener on ANY close path (backdrop, X, Escape, or
-    // either button) — closeModal runs this teardown.
-    currentCleanup = () => window.removeEventListener('invite-link-updated', linkUpdateHandler);
+    permissionRadios.forEach(radio => radio.addEventListener('change', refreshLink));
+    refreshLink(); // set initial value from the selected (edit) radio
 
     const copyToClipboard = () => {
       navigator.clipboard.writeText(linkInput.value);
