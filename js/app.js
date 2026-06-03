@@ -356,27 +356,6 @@ async function main() {
     link.click();
   };
 
-  // Wire up share link
-  document.getElementById('share-link').value = getShareableLink();
-
-  // Show/hide password controls based on encryption status
-  const passwordControls = document.getElementById('password-controls');
-  if (passwordControls) {
-    passwordControls.style.display = isEncrypted ? 'block' : 'none';
-  }
-
-  // Simple copy link button. For encrypted rooms the capability (password +
-  // keys) is always embedded — a link without it would drop the recipient into a
-  // different, open room. This is the quick "edit" link; use Invite for view-only.
-  document.getElementById('copy-link').onclick = async () => {
-    const link = getShareableLink();
-    copyToClipboard(link);
-
-    await showAlert('Link Copied', isEncrypted
-      ? 'The link has been copied. It includes the room password — anyone with it can access the room.'
-      : 'The share link has been copied to your clipboard.');
-  };
-
   // Add invite button functionality (if exists)
   const inviteBtn = document.getElementById('invite-btn');
   if (inviteBtn) {
@@ -469,37 +448,6 @@ async function main() {
       canvas.height = newHeight;
       drawingController.redraw();
     }
-  }
-
-  // ⋯ More popover
-  const moreBtn = document.getElementById('more-btn');
-  const moreMenu = document.getElementById('more-menu');
-  if (moreBtn && moreMenu) {
-    const onOutside = (e) => {
-      if (!moreMenu.contains(e.target) && e.target !== moreBtn && !moreBtn.contains(e.target)) closeMore();
-    };
-    // Close on Escape — but only when no modal is open, so Escape in a modal
-    // launched from the popover dismisses the modal, not the popover under it.
-    const onEsc = (e) => {
-      if (e.key === 'Escape' && !document.querySelector('.app-modal.active')) closeMore();
-    };
-    function openMore() {
-      moreMenu.classList.remove('u-hidden');
-      moreBtn.setAttribute('aria-expanded', 'true');
-      document.addEventListener('click', onOutside, true);
-      document.addEventListener('keydown', onEsc, true);
-    }
-    function closeMore() {
-      moreMenu.classList.add('u-hidden');
-      moreBtn.setAttribute('aria-expanded', 'false');
-      document.removeEventListener('click', onOutside, true);
-      document.removeEventListener('keydown', onEsc, true);
-    }
-    moreBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (moreMenu.classList.contains('u-hidden')) openMore();
-      else closeMore();
-    });
   }
 
   // Setup keyboard shortcuts
