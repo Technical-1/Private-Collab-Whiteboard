@@ -382,6 +382,47 @@ async function main() {
 
     render();
 
+    // --- Save-preview zoom cluster buttons ---
+    const ZOOM_STEP_SAVE = 1.25;
+
+    const saveZoomInBtn  = document.getElementById('save-zoom-in');
+    const saveZoomOutBtn = document.getElementById('save-zoom-out');
+    const saveFitBtn     = document.getElementById('save-fit');
+
+    if (saveZoomInBtn) {
+      saveZoomInBtn.addEventListener('click', () => {
+        // Keep world point at preview center fixed
+        const cx = PREVIEW_W / 2;
+        const cy = PREVIEW_H / 2;
+        const worldX = cx / view.zoom + view.x;
+        const worldY = cy / view.zoom + view.y;
+        view.zoom = Math.min(ZOOM_MAX_SAVE, view.zoom * ZOOM_STEP_SAVE);
+        view.x = worldX - cx / view.zoom;
+        view.y = worldY - cy / view.zoom;
+        render();
+      });
+    }
+
+    if (saveZoomOutBtn) {
+      saveZoomOutBtn.addEventListener('click', () => {
+        const cx = PREVIEW_W / 2;
+        const cy = PREVIEW_H / 2;
+        const worldX = cx / view.zoom + view.x;
+        const worldY = cy / view.zoom + view.y;
+        view.zoom = Math.max(ZOOM_MIN_SAVE, view.zoom / ZOOM_STEP_SAVE);
+        view.x = worldX - cx / view.zoom;
+        view.y = worldY - cy / view.zoom;
+        render();
+      });
+    }
+
+    if (saveFitBtn) {
+      saveFitBtn.addEventListener('click', () => {
+        view = computeFitView(getAllShapesBounds());
+        render();
+      });
+    }
+
     // --- Wheel: zoom toward cursor ---
     function onWheel(e) {
       e.preventDefault();
@@ -560,9 +601,8 @@ async function main() {
     );
   });
 
-  // Listen for board changes to update empty state
+  // Listen for board changes
   window.addEventListener('board-change', (e) => {
-    updateEmptyState(e.detail.itemCount === 0);
     if (role === 'view' && e.detail.itemCount === 0) updateStatus('Waiting for editor');
   });
 
@@ -894,13 +934,6 @@ function updateStatus(status) {
   const loadingOverlay = document.getElementById('loading-overlay');
   if (loadingOverlay && (status === 'Connected' || status === 'Encrypted' || status.includes('Offline'))) {
     loadingOverlay.classList.add('hidden');
-  }
-}
-
-function updateEmptyState(boardIsEmpty) {
-  const emptyState = document.getElementById('empty-state');
-  if (emptyState) {
-    emptyState.style.display = boardIsEmpty ? 'flex' : 'none';
   }
 }
 
