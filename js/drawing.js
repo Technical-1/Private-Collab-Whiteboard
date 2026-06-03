@@ -1449,7 +1449,7 @@ function showShapeSettingsPopup(shape, bounds) {
   // Disable all inputs if shape is locked
   if (shape.locked) {
     popup.classList.add('locked');
-    const inputs = popup.querySelectorAll('input, select');
+    const inputs = popup.querySelectorAll('input, select, button');
     inputs.forEach(input => {
       input.disabled = true;
     });

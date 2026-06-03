@@ -1,6 +1,17 @@
 import { describe, it, expect } from 'vitest';
 import { sanitizeShape, clampPoints, safeStrokeWidth, MAX_SHAPE_POINTS } from '../js/shape-schema.js';
 
+describe('sanitizeShape — arrowHeads', () => {
+  it("passes through valid arrowHeads ('none'/'both')", () => {
+    expect(sanitizeShape({ tool: 'connector', arrowHeads: 'none' }).arrowHeads).toBe('none');
+    expect(sanitizeShape({ tool: 'connector', arrowHeads: 'both' }).arrowHeads).toBe('both');
+  });
+  it('falls back to end for unknown/injected arrowHeads', () => {
+    expect(sanitizeShape({ tool: 'connector', arrowHeads: 'xss><img>' }).arrowHeads).toBe('end');
+    expect(sanitizeShape({ tool: 'connector', arrowHeads: undefined }).arrowHeads).toBe('end');
+  });
+});
+
 describe('sanitizeShape', () => {
   it('returns null for non-objects', () => {
     expect(sanitizeShape(null)).toBeNull();
