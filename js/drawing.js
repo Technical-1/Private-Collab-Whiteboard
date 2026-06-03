@@ -3230,3 +3230,64 @@ function drawFreehand(points, color, sw) {
 export function getCanvas() {
   return canvas;
 }
+
+/**
+ * Render the current board's shapes onto a target canvas at a given view.
+ * Draws SHAPES ONLY — no selection overlays, cursors, connectorHints, lasers,
+ * or in-progress previews. White background is filled first.
+ *
+ * The function temporarily swaps the module-level ctx/canvas/viewport to the
+ * target, runs the draw pass, then ALWAYS restores them (try/finally), so the
+ * live board canvas is never corrupted.
+ *
+ * @param {HTMLCanvasElement} targetCanvas - Canvas to render into
+ * @param {{x: number, y: number, zoom: number}} view - Viewport for the render
+ */
+export function renderBoardToCanvas(targetCanvas, view) {
+  if (!boards || !getCurrentBoard) return;
+
+  const boardName = getCurrentBoard();
+  const board = boards.get(boardName);
+
+  // Save module-level state
+  const savedCanvas = canvas;
+  const savedCtx = ctx;
+  const savedViewport = { x: viewport.x, y: viewport.y, zoom: viewport.zoom };
+
+  // Point module state at the target
+  canvas = targetCanvas;
+  ctx = targetCanvas.getContext('2d');
+  viewport.x = view.x;
+  viewport.y = view.y;
+  viewport.zoom = view.zoom;
+
+  try {
+    ctx.clearRect(0, 0, targetCanvas.width, targetCanvas.height);
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, targetCanvas.width, targetCanvas.height);
+
+    if (board) {
+      const items = board.toArray();
+      // Build a temporary shape index so connectors resolve correctly
+      shapeIndex = buildShapeIndex(items);
+      try {
+        ctx.save();
+        ctx.scale(view.zoom, view.zoom);
+        ctx.translate(-view.x, -view.y);
+        items.forEach((item) => {
+          drawShape(item);
+        });
+        ctx.restore();
+      } finally {
+        shapeIndex = null;
+      }
+    }
+  } finally {
+    // Always restore module-level state
+    canvas = savedCanvas;
+    ctx = savedCtx;
+    viewport.x = savedViewport.x;
+    viewport.y = savedViewport.y;
+    viewport.zoom = savedViewport.zoom;
+  }
+}

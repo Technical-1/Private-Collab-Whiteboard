@@ -7,7 +7,7 @@ import {
   changeUserColor,
   getLocalUserColor
 } from './awareness.js';
-import { setupDrawing, subscribeToBoard, getCanvas, screenToWorld, getViewport, panBy, setZoom, setReadOnlyMode, cleanup as cleanupDrawing, deleteSelectedShapes, copySelectedShapes, pasteShapes, duplicateSelectedShapes, getFitBounds } from './drawing.js';
+import { setupDrawing, subscribeToBoard, getCanvas, screenToWorld, getViewport, panBy, setZoom, setReadOnlyMode, cleanup as cleanupDrawing, deleteSelectedShapes, copySelectedShapes, pasteShapes, duplicateSelectedShapes, getFitBounds, renderBoardToCanvas } from './drawing.js';
 import { setupBoardManager, setBoardsContainer } from './boards.js';
 import {
   getRoomIdFromUrl,
@@ -328,38 +328,157 @@ async function main() {
     }
   };
 
-  // Wire up save as image — opens preview modal with PNG / PDF options
+  // Wire up save as image — opens interactive pan/zoom preview modal
   document.getElementById('save-image').onclick = async () => {
-    const canvas = getCanvas();
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = canvas.width;
-    tempCanvas.height = canvas.height;
-    const tempCtx = tempCanvas.getContext('2d');
+    const SAVE_PADDING = FIT_PADDING;
+    const PREVIEW_W = 760;
+    const PREVIEW_H = 460;
+    const EXPORT_SCALE = 2; // retina-quality export
+    const ZOOM_MIN_SAVE = 0.05;
+    const ZOOM_MAX_SAVE = 8;
 
-    tempCtx.fillStyle = '#FFFFFF';
-    tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-    tempCtx.drawImage(canvas, 0, 0);
+    // Compute a view {x, y, zoom} that fits the given world-space bounds into the
+    // preview canvas logical dimensions (PREVIEW_W x PREVIEW_H) with padding.
+    function computeFitView(bounds) {
+      if (!bounds || bounds.width === 0 || bounds.height === 0) {
+        const vp = getViewport();
+        return { x: vp.x, y: vp.y, zoom: vp.zoom };
+      }
+      const scaleX = (PREVIEW_W - SAVE_PADDING * 2) / bounds.width;
+      const scaleY = (PREVIEW_H - SAVE_PADDING * 2) / bounds.height;
+      const zoom = Math.min(Math.max(ZOOM_MIN_SAVE, Math.min(scaleX, scaleY)), 4);
+      const cx = bounds.x + bounds.width / 2;
+      const cy = bounds.y + bounds.height / 2;
+      return {
+        x: cx - (PREVIEW_W / 2) / zoom,
+        y: cy - (PREVIEW_H / 2) / zoom,
+        zoom
+      };
+    }
 
-    const dataUrl = tempCanvas.toDataURL('image/png');
-    const choice = await showSaveModal(dataUrl);
+    // Mutable preview view (logical canvas coordinates, not physical pixels)
+    let view = computeFitView(getAllShapesBounds());
+
+    // Open the modal — canvas is synchronously available in the returned object
+    const { previewCanvas, promise } = showSaveModal();
+
+    // Size the canvas: physical pixels = logical × devicePixelRatio for crispness.
+    // We set .width/.height attributes (not CSS) — no inline style, CSP-safe.
+    const dpr = window.devicePixelRatio || 1;
+    previewCanvas.width = PREVIEW_W * dpr;
+    previewCanvas.height = PREVIEW_H * dpr;
+
+    // Render current view into the preview canvas.
+    // The view's zoom is multiplied by dpr so the shapes fill the physical pixels;
+    // the world-space x/y stay unchanged.
+    function render() {
+      renderBoardToCanvas(previewCanvas, {
+        x: view.x,
+        y: view.y,
+        zoom: view.zoom * dpr
+      });
+    }
+
+    render();
+
+    // --- Wheel: zoom toward cursor ---
+    function onWheel(e) {
+      e.preventDefault();
+      const rect = previewCanvas.getBoundingClientRect();
+      // Map CSS-pixel cursor position → logical canvas coordinates
+      const cx = (e.clientX - rect.left) * (PREVIEW_W / rect.width);
+      const cy = (e.clientY - rect.top) * (PREVIEW_H / rect.height);
+      // World point under the cursor before zoom
+      const worldX = cx / view.zoom + view.x;
+      const worldY = cy / view.zoom + view.y;
+
+      const factor = e.deltaY > 0 ? 0.9 : 1.1;
+      view.zoom = Math.max(ZOOM_MIN_SAVE, Math.min(ZOOM_MAX_SAVE, view.zoom * factor));
+      // Keep that world point under the cursor after zoom
+      view.x = worldX - cx / view.zoom;
+      view.y = worldY - cy / view.zoom;
+      render();
+    }
+
+    // --- Mousedown/move/up: drag to pan ---
+    let dragActive = false;
+    let dragLastX = 0;
+    let dragLastY = 0;
+
+    function onMouseDown(e) {
+      dragActive = true;
+      dragLastX = e.clientX;
+      dragLastY = e.clientY;
+      previewCanvas.style.cursor = 'grabbing';
+    }
+
+    function onMouseMove(e) {
+      if (!dragActive) return;
+      const rect = previewCanvas.getBoundingClientRect();
+      const scaleX = PREVIEW_W / rect.width;
+      const scaleY = PREVIEW_H / rect.height;
+      const dx = (e.clientX - dragLastX) * scaleX / view.zoom;
+      const dy = (e.clientY - dragLastY) * scaleY / view.zoom;
+      view.x -= dx;
+      view.y -= dy;
+      dragLastX = e.clientX;
+      dragLastY = e.clientY;
+      render();
+    }
+
+    function onMouseUp() {
+      if (!dragActive) return;
+      dragActive = false;
+      previewCanvas.style.cursor = 'grab';
+    }
+
+    previewCanvas.style.cursor = 'grab';
+    previewCanvas.addEventListener('wheel', onWheel, { passive: false });
+    previewCanvas.addEventListener('mousedown', onMouseDown);
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+
+    function removeListeners() {
+      previewCanvas.removeEventListener('wheel', onWheel);
+      previewCanvas.removeEventListener('mousedown', onMouseDown);
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    }
+
+    // Wait for the user to choose Save PNG / Save PDF / Close
+    const choice = await promise;
+    removeListeners();
+
+    if (!choice) return; // dismissed
+
+    // Export at higher resolution: same view zoom × EXPORT_SCALE, same world origin
+    const exportW = PREVIEW_W * EXPORT_SCALE;
+    const exportH = PREVIEW_H * EXPORT_SCALE;
+    const exportCanvas = document.createElement('canvas');
+    exportCanvas.width = exportW;
+    exportCanvas.height = exportH;
+    renderBoardToCanvas(exportCanvas, {
+      x: view.x,
+      y: view.y,
+      zoom: view.zoom * EXPORT_SCALE
+    });
 
     if (choice === 'png') {
+      const dataUrl = exportCanvas.toDataURL('image/png');
       const link = document.createElement('a');
       link.download = 'whiteboard.png';
       link.href = dataUrl;
       link.click();
     } else if (choice === 'pdf') {
-      const w = canvas.width;
-      const h = canvas.height;
+      const dataUrl = exportCanvas.toDataURL('image/png');
       const pdf = new jsPDF({
-        orientation: w >= h ? 'landscape' : 'portrait',
+        orientation: exportW >= exportH ? 'landscape' : 'portrait',
         unit: 'px',
-        format: [w, h]
+        format: [exportW, exportH]
       });
-      pdf.addImage(dataUrl, 'PNG', 0, 0, w, h);
+      pdf.addImage(dataUrl, 'PNG', 0, 0, exportW, exportH);
       pdf.save('whiteboard.pdf');
     }
-    // choice === null → user dismissed, do nothing
   };
 
   // Add invite button functionality (if exists)

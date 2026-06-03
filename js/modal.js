@@ -323,38 +323,56 @@ export function showPasswordModal(title, description = '', isChange = false) {
 }
 
 /**
- * Show a save-as modal with a board image preview and PNG / PDF download options.
- * @param {string} dataUrl - PNG data URL produced from the whiteboard canvas
- * @returns {Promise<'png'|'pdf'|null>} Resolves with the user's choice, or null on dismiss.
+ * Show an interactive save-as modal with a pannable/zoomable preview canvas.
+ * The caller renders board content into the canvas and wires pan/zoom interactions.
+ *
+ * Returns an object with:
+ *   - previewCanvas: the canvas element (already in the DOM when this returns)
+ *   - promise: resolves to 'png' | 'pdf' | null when the user acts
  */
-export function showSaveModal(dataUrl) {
-  return new Promise((resolve) => {
+export function showSaveModal() {
+  initModals();
+
+  const bodyHTML = `
+    <div class="save-preview-wrapper">
+      <canvas class="save-preview-canvas"></canvas>
+    </div>
+    <p class="save-preview-hint">Scroll to zoom · drag to pan</p>
+  `;
+
+  const actions = `
+    <button class="modal-btn modal-btn-secondary" id="modal-close">Close</button>
+    <button class="modal-btn modal-btn-secondary" id="save-pdf">Save as PDF</button>
+    <button class="modal-btn modal-btn-primary" id="save-png">Save as PNG</button>
+  `;
+
+  // Widen the modal for the larger preview before showModal, so it's sized correctly on open
+  const appModal = modalContainer.querySelector('.app-modal');
+  appModal.classList.add('save-modal-wide');
+
+  showModal('Save Board', '', bodyHTML, actions);
+
+  const previewCanvas = modalContainer.querySelector('.save-preview-canvas');
+
+  const promise = new Promise((resolve) => {
     currentResolve = resolve;
 
-    // Build body with a placeholder img — src set via DOM property after showModal
-    // so the data: URL is never interpolated into innerHTML.
-    const bodyHTML = `
-      <div class="save-preview-wrapper">
-        <img class="save-preview-img" alt="Board preview">
-      </div>
-    `;
+    const done = (choice) => {
+      appModal.classList.remove('save-modal-wide');
+      closeModal(choice);
+    };
 
-    const actions = `
-      <button class="modal-btn modal-btn-secondary" id="modal-close">Close</button>
-      <button class="modal-btn modal-btn-secondary" id="save-pdf">Save as PDF</button>
-      <button class="modal-btn modal-btn-primary" id="save-png">Save as PNG</button>
-    `;
+    modalContainer.querySelector('#modal-close').onclick = () => done(null);
+    modalContainer.querySelector('#save-png').onclick = () => done('png');
+    modalContainer.querySelector('#save-pdf').onclick = () => done('pdf');
 
-    showModal('Save Board', '', bodyHTML, actions);
-
-    // Set img src via DOM property — never via innerHTML attribute interpolation.
-    const previewImg = modalContainer.querySelector('.save-preview-img');
-    previewImg.src = dataUrl;
-
-    modalContainer.querySelector('#modal-close').onclick = () => closeModal(null);
-    modalContainer.querySelector('#save-png').onclick = () => closeModal('png');
-    modalContainer.querySelector('#save-pdf').onclick = () => closeModal('pdf');
+    // Ensure the wide class is removed on backdrop/X/Escape dismissal too
+    currentCleanup = () => {
+      appModal.classList.remove('save-modal-wide');
+    };
   });
+
+  return { previewCanvas, promise };
 }
 
 /**
