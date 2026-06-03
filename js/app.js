@@ -54,18 +54,18 @@ let readOnly = false;
 
 // Per-tool settings storage
 const toolSettings = {
-  line: { strokeWidth: 2 },
-  rect: { strokeWidth: 2, fillEnabled: false, fillColor: '#ffffff' },
-  circle: { strokeWidth: 2, fillEnabled: false, fillColor: '#ffffff' },
-  freehand: { strokeWidth: 2 },
+  line: { strokeWidth: 2, strokeStyle: 'solid' },
+  rect: { strokeWidth: 2, strokeStyle: 'solid', fillEnabled: false, fillColor: '#ffffff' },
+  circle: { strokeWidth: 2, strokeStyle: 'solid', fillEnabled: false, fillColor: '#ffffff' },
+  freehand: { strokeWidth: 2, strokeStyle: 'solid' },
   highlight: { strokeWidth: 16 },
   text: { fontSize: 20, fontFamily: 'Arial' },
   'eraser-brush': { strokeWidth: 4 },
-  arrow: { strokeWidth: 2 },
-  connector: { strokeWidth: 2 },
-  diamond: { strokeWidth: 2, fillEnabled: false, fillColor: '#ffffff' },
-  triangle: { strokeWidth: 2, fillEnabled: false, fillColor: '#ffffff' },
-  ellipse: { strokeWidth: 2, fillEnabled: false, fillColor: '#ffffff' }
+  arrow: { strokeWidth: 2, strokeStyle: 'solid' },
+  connector: { strokeWidth: 2, strokeStyle: 'solid' },
+  diamond: { strokeWidth: 2, strokeStyle: 'solid', fillEnabled: false, fillColor: '#ffffff' },
+  triangle: { strokeWidth: 2, strokeStyle: 'solid', fillEnabled: false, fillColor: '#ffffff' },
+  ellipse: { strokeWidth: 2, strokeStyle: 'solid', fillEnabled: false, fillColor: '#ffffff' }
 };
 
 let currentToolName = 'select';
@@ -531,6 +531,12 @@ function saveCurrentToolSettings() {
     }
   }
 
+  // Save stroke style for tools that use it
+  if ('strokeStyle' in settings) {
+    const activeStyleBtn = document.querySelector('.style-btn.active');
+    settings.strokeStyle = activeStyleBtn?.dataset.style ?? drawingController.getStrokeStyle();
+  }
+
   // Save text settings
   if ('fontSize' in settings) {
     const fontSizeInput = document.getElementById('font-size');
@@ -560,6 +566,14 @@ function loadToolSettings(toolName) {
       drawingController.setStrokeWidth(settings.strokeWidth);
       updateStrokePresetHighlight(settings.strokeWidth);
     }
+  }
+
+  // Load stroke style
+  if ('strokeStyle' in settings) {
+    drawingController.setStrokeStyle(settings.strokeStyle);
+    document.querySelectorAll('.style-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.style === settings.strokeStyle);
+    });
   }
 
   // Load fill settings
