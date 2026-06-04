@@ -9,8 +9,8 @@
   <meta name="description" content="A private, real-time collaborative whiteboard. Draw together with end-to-end encryption, no account required. Your data stays on your device.">
   <meta name="keywords" content="whiteboard, collaboration, drawing, real-time, encrypted, private, peer-to-peer, canvas, teamwork">
   <meta name="author" content="Whiteboard">
-  <meta name="robots" content="index, follow">
   <meta name="theme-color" content="#6366f1">
+  <link rel="canonical" href="https://private-collab-whiteboard.vercel.app/">
 
   <!-- Open Graph / Facebook -->
   <meta property="og:type" content="website">
@@ -20,6 +20,8 @@
   <meta property="og:image" content="https://private-collab-whiteboard.vercel.app/og-image.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:alt" content="Private Collab Whiteboard — a real-time, end-to-end encrypted collaborative whiteboard">
   <meta property="og:site_name" content="Whiteboard">
   <meta property="og:locale" content="en_US">
 
@@ -29,6 +31,7 @@
   <meta name="twitter:title" content="Whiteboard - Private Collaborative Drawing">
   <meta name="twitter:description" content="A private, real-time collaborative whiteboard. Draw together with end-to-end encryption, no account required.">
   <meta name="twitter:image" content="https://private-collab-whiteboard.vercel.app/og-image.png">
+  <meta name="twitter:image:alt" content="Private Collab Whiteboard — a real-time, end-to-end encrypted collaborative whiteboard">
 
   <!-- Favicon -->
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
@@ -44,6 +47,53 @@
 
   <!-- Styles -->
   <link rel="stylesheet" href="css/styles.css">
+
+  <!-- Structured data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": "https://private-collab-whiteboard.vercel.app/#website",
+        "url": "https://private-collab-whiteboard.vercel.app/",
+        "name": "Whiteboard",
+        "description": "A private, real-time collaborative whiteboard with end-to-end encryption. No account required.",
+        "inLanguage": "en",
+        "publisher": { "@id": "https://private-collab-whiteboard.vercel.app/#author" }
+      },
+      {
+        "@type": "Person",
+        "@id": "https://private-collab-whiteboard.vercel.app/#author",
+        "name": "Jacob Kanfer",
+        "url": "https://jacobkanfer.com",
+        "sameAs": ["https://github.com/Technical-1"]
+      },
+      {
+        "@type": "WebApplication",
+        "name": "Private Collab Whiteboard",
+        "url": "https://private-collab-whiteboard.vercel.app/",
+        "applicationCategory": "ProductivityApplication",
+        "operatingSystem": "Any (modern web browser)",
+        "browserRequirements": "Requires a modern browser with JavaScript, Web Crypto, and IndexedDB",
+        "description": "A peer-to-peer collaborative whiteboard. Draw together in real time with end-to-end encryption and capability-based roles (owner, editor, view-only) — no account and no backend database.",
+        "inLanguage": "en",
+        "isAccessibleForFree": true,
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "featureList": [
+          "Real-time collaborative drawing",
+          "End-to-end encryption (AES-256-GCM)",
+          "Capability-based roles with cryptographic view-only",
+          "Shapes, sticky notes, connectors, highlighter, and laser pointer",
+          "Multiple boards per room",
+          "Offline support",
+          "Export to PNG and PDF"
+        ],
+        "author": { "@id": "https://private-collab-whiteboard.vercel.app/#author" }
+      }
+    ]
+  }
+  </script>
 </head>
 <body class="landing-page">
   <!-- Animated background -->

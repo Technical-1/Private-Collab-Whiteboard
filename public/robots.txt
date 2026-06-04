@@ -1,0 +1,7 @@
+User-agent: *
+Allow: /
+
+# Private capability rooms — never crawl (content is key-gated and per-room).
+Disallow: /room/
+
+Sitemap: https://private-collab-whiteboard.vercel.app/sitemap.xml

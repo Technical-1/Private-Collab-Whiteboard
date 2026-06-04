@@ -9,8 +9,8 @@
   <meta name="description" content="How the Private Collab Whiteboard works: conflict-free real-time sync, a relay that only sees ciphertext, end-to-end encryption, and cryptographically enforced view-only access.">
   <meta name="keywords" content="whiteboard, how it works, end-to-end encryption, CRDT, peer-to-peer, capability links, view-only, privacy">
   <meta name="author" content="Whiteboard">
-  <meta name="robots" content="index, follow">
   <meta name="theme-color" content="#6366f1">
+  <link rel="canonical" href="https://private-collab-whiteboard.vercel.app/how-it-works">
 
   <!-- Open Graph / Facebook -->
   <meta property="og:type" content="website">
@@ -20,6 +20,8 @@
   <meta property="og:image" content="https://private-collab-whiteboard.vercel.app/og-image.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:alt" content="How the Private Collab Whiteboard works — sync, encryption, and access control explained">
   <meta property="og:site_name" content="Whiteboard">
   <meta property="og:locale" content="en_US">
 
@@ -29,6 +31,7 @@
   <meta name="twitter:title" content="How it works - Whiteboard">
   <meta name="twitter:description" content="A whiteboard with no backend and no database. See exactly how real-time sync, end-to-end encryption, and cryptographic view-only access work.">
   <meta name="twitter:image" content="https://private-collab-whiteboard.vercel.app/og-image.png">
+  <meta name="twitter:image:alt" content="How the Private Collab Whiteboard works — sync, encryption, and access control explained">
 
   <!-- Favicon -->
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
@@ -44,6 +47,41 @@
 
   <!-- Styles -->
   <link rel="stylesheet" href="css/styles.css">
+
+  <!-- Structured data -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+          { "@type": "ListItem", "position": 1, "name": "Home", "item": "https://private-collab-whiteboard.vercel.app/" },
+          { "@type": "ListItem", "position": 2, "name": "How it works", "item": "https://private-collab-whiteboard.vercel.app/how-it-works" }
+        ]
+      },
+      {
+        "@type": "TechArticle",
+        "headline": "How Private Collab Whiteboard works",
+        "description": "A top-down explanation of how the whiteboard works: conflict-free real-time sync (CRDTs), a relay that only ever sees ciphertext, end-to-end encryption, capability links, cryptographically enforced view-only access, and owner-controlled rotation.",
+        "url": "https://private-collab-whiteboard.vercel.app/how-it-works",
+        "inLanguage": "en",
+        "author": {
+          "@type": "Person",
+          "name": "Jacob Kanfer",
+          "url": "https://jacobkanfer.com",
+          "sameAs": ["https://github.com/Technical-1"]
+        },
+        "about": [
+          "Conflict-free Replicated Data Types (CRDTs)",
+          "End-to-end encryption",
+          "Capability-based access control",
+          "Peer-to-peer collaboration"
+        ]
+      }
+    ]
+  }
+  </script>
 </head>
 <body class="landing-page how-page">
   <!-- Animated background -->
