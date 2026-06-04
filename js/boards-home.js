@@ -4,9 +4,23 @@
       clearAllBoards,
       formatRelativeTime,
       getRoleInfo,
-      getBoardCount
+      getBoardCount,
+      saveBoard
     } from '/js/board-history.js';
-    import { escapeHtml } from '/js/utils.js';
+    import { escapeHtml, generateRoomId } from '/js/utils.js';
+
+    // Create a fresh open (passwordless) room and jump straight into it. This is
+    // the quick-create path from "My Boards" — no password UI here, so it mirrors
+    // the landing page's no-password create. Encryption can be added in-room.
+    function createOpenRoom(e) {
+      if (e) e.preventDefault();
+      const roomId = generateRoomId();
+      saveBoard({ roomId, roomName: roomId, role: 'owner', isEncrypted: false });
+      window.location.href = `/room/${roomId}`;
+    }
+
+    // Header "New Board" button (always present in the static markup).
+    document.getElementById('create-board-btn')?.addEventListener('click', createOpenRoom);
 
     function renderBoards() {
       const container = document.getElementById('boards-content');
@@ -22,7 +36,7 @@
             </svg>
             <h2>No boards yet</h2>
             <p>Boards you create or join will appear here. Create your first board to get started!</p>
-            <a href="/" class="btn btn-primary">
+            <a href="/" id="create-first-board" class="btn btn-primary">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                 <line x1="12" y1="5" x2="12" y2="19"/>
                 <line x1="5" y1="12" x2="19" y2="12"/>
@@ -31,6 +45,7 @@
             </a>
           </div>
         `;
+        document.getElementById('create-first-board')?.addEventListener('click', createOpenRoom);
         return;
       }
 

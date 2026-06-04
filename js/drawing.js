@@ -820,7 +820,7 @@ function handleMouseMove(e) {
     freehandPoints.push({ x, y });
     drawFreehandPreview();
     // Broadcast to other users
-    updateCurrentDrawing({
+    broadcastDrawing({
       tool: currentTool === 'eraser-brush' ? 'eraser' : currentTool, // 'freehand' or 'highlight'
       points: freehandPoints,
       strokeWidth: currentTool === 'eraser-brush' ? strokeWidth * 3 : strokeWidth
@@ -834,14 +834,14 @@ function handleMouseMove(e) {
     drawShapeCreationPreview(x, y);
     // Broadcast to other users
     if (currentTool === 'line') {
-      updateCurrentDrawing({
+      broadcastDrawing({
         tool: 'line',
         startX, startY,
         x, y,
         strokeWidth, strokeStyle: currentStrokeStyle,
       });
     } else if (currentTool === 'rect') {
-      updateCurrentDrawing({
+      broadcastDrawing({
         tool: 'rect',
         startX, startY,
         width: x - startX,
@@ -851,7 +851,7 @@ function handleMouseMove(e) {
       });
     } else if (currentTool === 'circle') {
       const radius = Math.sqrt(Math.pow(x - startX, 2) + Math.pow(y - startY, 2));
-      updateCurrentDrawing({
+      broadcastDrawing({
         tool: 'circle',
         startX, startY,
         radius,
@@ -859,12 +859,12 @@ function handleMouseMove(e) {
         fillColor: fillEnabled ? fillColor : null
       });
     } else if (currentTool === 'arrow') {
-      updateCurrentDrawing({
+      broadcastDrawing({
         tool: 'arrow', startX, startY, x, y,
         strokeWidth, strokeStyle: currentStrokeStyle, arrowHeads: currentArrowHeads,
       });
     } else if (currentTool === 'diamond' || currentTool === 'triangle' || currentTool === 'ellipse') {
-      updateCurrentDrawing({
+      broadcastDrawing({
         tool: currentTool, startX, startY,
         width: x - startX, height: y - startY,
         strokeWidth, strokeStyle: currentStrokeStyle,
@@ -2583,6 +2583,22 @@ export function getFitBounds(shape) {
 
 // ============ Drawing Functions ============
 
+// Convert the slider stroke width (interpreted as ON-SCREEN pixels) into world
+// units for the current zoom — exactly how text/sticky sizes are stored
+// (size / zoom; see the sticky-note creation comment). This keeps a stroke's
+// on-screen thickness matched to the slider regardless of the zoom it's drawn
+// at, and makes it scale with zoom afterward like text and sticky notes do.
+function worldStrokeWidth(screenWidth) {
+  return screenWidth / viewport.zoom;
+}
+
+// Broadcast an in-progress drawing to peers, normalizing stroke width to world
+// units first so a peer's live preview matches the shape that eventually commits.
+function broadcastDrawing(data) {
+  if (typeof data.strokeWidth === 'number') data.strokeWidth = worldStrokeWidth(data.strokeWidth);
+  updateCurrentDrawing(data);
+}
+
 function addDrawing(data) {
   if (!canMutate()) return; // Block in read-only mode
 
@@ -2608,6 +2624,13 @@ function addDrawing(data) {
     timestamp: Date.now()
   };
 
+  // Store stroke width in world units (slider value is on-screen pixels at the
+  // current zoom). Mirrors text/sticky sizing so all shapes scale with zoom
+  // identically. Shapes without a stroke width (text, sticky) are untouched.
+  if (typeof drawingObj.strokeWidth === 'number') {
+    drawingObj.strokeWidth = worldStrokeWidth(drawingObj.strokeWidth);
+  }
+
   board.push([drawingObj]);
 }
 
@@ -2629,6 +2652,11 @@ export function subscribeToBoard(boardName) {
 
   const board = boards.get(boardName);
   if (!board) {
+    // Switching to a board with no content array yet (e.g. the lazily-created
+    // default before its first draw, or after deleting the active board). Clear
+    // any stale rendering left over from the previous board.
+    if (ctx && canvas) ctx.clearRect(0, 0, canvas.width, canvas.height);
+    window.dispatchEvent(new CustomEvent('board-change', { detail: { itemCount: 0 } }));
     return;
   }
 
@@ -3028,7 +3056,10 @@ function drawShapeCreationPreview(x, y) {
   ctx.scale(viewport.zoom, viewport.zoom);
   ctx.translate(-viewport.x, -viewport.y);
   ctx.globalAlpha = 0.5;
-  ctx.lineWidth = strokeWidth;
+  // Preview in world units (slider value / zoom) so the previewed thickness
+  // matches what addDrawing will commit at this zoom.
+  const previewSW = worldStrokeWidth(strokeWidth);
+  ctx.lineWidth = previewSW;
 
   if (currentTool === 'line') {
     ctx.setLineDash(dashPattern(currentStrokeStyle).map(d => d / viewport.zoom));
@@ -3044,13 +3075,13 @@ function drawShapeCreationPreview(x, y) {
     drawCircle(startX, startY, radius, color, fillEnabled ? fillColor : null);
     ctx.setLineDash([]);
   } else if (currentTool === 'arrow') {
-    drawArrow(startX, startY, x, y, color, strokeWidth, currentStrokeStyle, currentArrowHeads);
+    drawArrow(startX, startY, x, y, color, previewSW, currentStrokeStyle, currentArrowHeads);
   } else if (currentTool === 'diamond' || currentTool === 'triangle') {
     const bx = Math.min(startX, x), by = Math.min(startY, y);
-    drawPolygon(currentTool, bx, by, Math.abs(x - startX), Math.abs(y - startY), color, strokeWidth, currentStrokeStyle, fillEnabled ? fillColor : null);
+    drawPolygon(currentTool, bx, by, Math.abs(x - startX), Math.abs(y - startY), color, previewSW, currentStrokeStyle, fillEnabled ? fillColor : null);
   } else if (currentTool === 'ellipse') {
     const bx = Math.min(startX, x), by = Math.min(startY, y);
-    drawEllipseShape(bx, by, Math.abs(x - startX), Math.abs(y - startY), color, strokeWidth, currentStrokeStyle, fillEnabled ? fillColor : null);
+    drawEllipseShape(bx, by, Math.abs(x - startX), Math.abs(y - startY), color, previewSW, currentStrokeStyle, fillEnabled ? fillColor : null);
   }
 
   ctx.restore();
@@ -3061,7 +3092,8 @@ function drawFreehandPreview() {
 
   const localState = awareness.getLocalState();
   const color = currentTool === 'eraser-brush' ? '#FFFFFF' : (localState?.user?.color || '#000000');
-  const sw = currentTool === 'eraser-brush' ? strokeWidth * 3 : strokeWidth;
+  // World units so the freehand preview matches the committed stroke at this zoom.
+  const sw = worldStrokeWidth(currentTool === 'eraser-brush' ? strokeWidth * 3 : strokeWidth);
 
   // Redraw existing shapes
   redrawCanvas();

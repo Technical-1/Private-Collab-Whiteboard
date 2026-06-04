@@ -62,6 +62,10 @@ async function waitForSync(provider, eventName, timeout = 5000) {
 export async function initializeYjs(roomId, capability = null) {
   const ydoc = new Y.Doc();
   const boards = ydoc.getMap('boards');
+  // Display-label overlay for boards (key -> custom name). Lives in the same doc
+  // so renames sync to peers and are signed like any other update. Kept separate
+  // from `boards` so a board's identity (its key) stays stable across renames.
+  const boardNames = ydoc.getMap('boardNames');
 
   const password = capability ? capability.password : null;
   const indexeddbKey = password ? `whiteboard-encrypted-${roomId}` : `whiteboard-${roomId}`;
@@ -124,7 +128,7 @@ export async function initializeYjs(roomId, capability = null) {
   // conflicts.
 
   return {
-    ydoc, boards, provider, indexeddbProvider, signedSync,
+    ydoc, boards, boardNames, provider, indexeddbProvider, signedSync,
     awareness: provider.awareness,
     isEncrypted: !!password,
     role: capability ? capability.role : 'edit',

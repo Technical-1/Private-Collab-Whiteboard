@@ -27,6 +27,21 @@ body {
   background-color: #f5f5f5;
   color: #333;
   line-height: 1.6;
+  /* UI chrome isn't document text — a stray drag or right-click shouldn't
+     highlight labels like board tabs, toolbar buttons, or the zoom readout. */
+  -webkit-user-select: none;
+  -moz-user-select: none;
+  user-select: none;
+}
+
+/* Real text fields opt back in so typing, editing, and copy/paste still work
+   (modal prompts, the text/sticky drawing inputs). */
+input,
+textarea,
+[contenteditable="true"] {
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  user-select: text;
 }
 
 /* ============================================

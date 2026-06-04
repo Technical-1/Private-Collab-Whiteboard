@@ -113,7 +113,7 @@ async function main() {
   // Initialize Y.js (with or without encryption)
   // This also waits for IndexedDB to sync (load local data)
   yjsInstance = await initializeYjs(roomId, cap);
-  const { boards, awareness, isEncrypted, role } = yjsInstance;
+  const { boards, boardNames, awareness, isEncrypted, role } = yjsInstance;
 
   // Derive permission flags from role
   readOnly = role === 'view';
@@ -158,7 +158,7 @@ async function main() {
   // Color picker is now handled in awareness.js (overlaid on the local avatar bubble).
 
   // Setup board manager
-  boardManager = setupBoardManager(boards, awareness, (boardName) => {
+  boardManager = setupBoardManager(boards, boardNames, awareness, (boardName) => {
     subscribeToBoard(boardName);
   });
 
