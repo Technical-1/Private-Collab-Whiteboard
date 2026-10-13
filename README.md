@@ -1,260 +1,247 @@
 # Private Collab Whiteboard
 
-A real-time collaborative whiteboard application with peer-to-peer synchronization, end-to-end encryption, and infinite canvas support.
+A real-time collaborative whiteboard with an infinite canvas, optional end-to-end encryption, and view-only links that are enforced by signatures rather than a client-side flag.
 
 ![Version](https://img.shields.io/badge/version-2.0.0-green.svg)
+
+**Live:** [private-collab-whiteboard.vercel.app](https://private-collab-whiteboard.vercel.app/) · [How it works](https://private-collab-whiteboard.vercel.app/how-it-works)
+
+There is no backend and no database. Every browser holds the full board as a Y.js CRDT document, persisted locally in IndexedDB, and edits travel between browsers through a 35-line PartyKit relay. In a password-protected room every frame is AES-256-GCM-encrypted before it leaves the browser and every edit is ECDSA-signed, so the relay only ever forwards ciphertext and a viewer cannot forge an edit that other peers will accept.
 
 ## Features
 
 ### Real-Time Collaboration
-- **CRDT-based sync** using Y.js for conflict-free real-time collaboration
-- **Live cursor tracking** - see where other users are pointing
-- **Live drawing preview** - watch others draw in real-time as they create shapes
-- **User presence** - see who's online with color-coded identities
+- **CRDT-based sync** using Y.js for conflict-free merging of concurrent edits
+- **Live cursors** with name labels, throttled to one update per 50 ms
+- **Live drawing preview** — watch others' strokes and shapes take form before they are committed
+- **User presence** — see who's online, each with their own color (changeable from your avatar)
 
 ### Drawing Tools
-- **Freehand drawing** - natural pencil/pen tool, plus a translucent **highlighter**
-- **Shapes** - lines, arrows, rectangles, circles, ellipses, diamonds, and triangles, with solid/dashed/dotted strokes and optional fills
-- **Connectors** - draw an arrow from one shape to another; the endpoints stay bound and re-route as you move either shape
-- **Sticky notes** - color-coded notes with wrapped, scrollable text
-- **Text tool** - inline text editing directly on canvas
-- **Laser pointer** - ephemeral pointer trail for presentations (not saved to the board)
-- **Eraser** - remove shapes with a click
-- **Select tool** - move, resize, and manipulate shapes
+- **Pencil and highlighter** — freehand strokes; the highlighter renders at 35% opacity
+- **Shapes** — line, arrow, rectangle, circle, ellipse, diamond and triangle, with solid/dashed/dotted strokes, optional fills, and arrowheads on the end, both ends, or neither
+- **Connectors** — drag from one shape to another; the arrow stays bound to both shapes and follows them as they move. Connectors can be reversed, and are removed automatically when a linked shape is deleted
+- **Sticky notes** — color-coded, multi-line notes whose text wraps, and scrolls with the mouse wheel when it overflows
+- **Text tool** — inline text editing directly on the canvas
+- **Laser pointer** — a fading pointer trail for presenting, sent as presence only and never saved to the board
+- **Two erasers** — a shape eraser (click a shape, or drag across several) and a brush eraser that paints over strokes
+- **Select tool** — move shapes, and change their color, stroke, fill, font, and stacking order (to back, backward, forward, to front) from a settings popup
 
 ### Infinite Canvas
-- **Pan** - hold Space + drag to navigate
-- **Zoom** - scroll wheel or use zoom controls
-- **Fit to content** - auto-zoom to see all drawings
+- **Pan** — hold Space and drag, or drag with two fingers on touch screens
+- **Zoom** — scroll wheel centered on the cursor, pinch-to-zoom, or the zoom buttons (10%–500%)
+- **Fit all** — zoom and pan to frame every shape on the board
+- **Zoom-consistent strokes** — stroke width is stored in world units, so a line keeps its proportions at any zoom level
 
-### Advanced Features
-- **Undo/Redo** - full history support (only affects your own changes)
-- **Multi-select** - Shift+click to select multiple shapes
-- **Copy/Paste/Duplicate** - standard clipboard operations
-- **Lock shapes** - prevent accidental modifications
-- **Multiple boards** - create, switch, clear, and delete boards within a room
-- **Extract text** - export all text grouped by user or position
-- **Save as PNG / PDF** - an interactive export modal lets you pan and zoom to frame the shot, then save a retina-resolution PNG or a single-page PDF
+### Editing and Boards
+- **Undo/redo** — only ever reverts your own changes; deleting a shape together with the connectors attached to it is a single undo step
+- **Multi-select** — Shift+click to build a selection
+- **Copy, paste, duplicate** — pasted connectors are re-pointed at the pasted copies of their shapes
+- **Lock shapes** — locked shapes can't be moved, restyled, or deleted
+- **Multiple boards per room** — create, switch, rename, clear, and delete boards from the tab bar (right-click a tab); renames sync to everyone
+- **Save as PNG / PDF** — an export dialog lets you pan and zoom to frame the shot, then saves a 2× resolution PNG or a single-page PDF
+- **My Boards** — a history page of every room you've opened, with your role, encryption status, last visit and visit count
 
-### Security & Privacy
-- **End-to-end encryption** - password-protected rooms encrypt all traffic with AES-256-GCM; the relay only ever sees ciphertext
-- **Capability-based access** - share links carry an owner / editor / viewer role enforced by ECDSA P-256 signatures, not just a client-side flag
-- **Cryptographic view-only** - viewers hold no signing key, so their edits are rejected by every peer — a hostile viewer can't forge their way to edit access
-- **Owner-controlled rotation** - only the room owner can rotate the room to a new epoch, instantly cutting off anyone holding an old link
-- **Hardened against XSS** - untrusted shape/presence data from peers is allow-listed before it ever touches the DOM, backed by a strict `script-src 'self'` CSP (no inline scripts)
-- **No account required** - just create a room and share the link
-- **P2P architecture** - data syncs directly between browsers through a dumb relay
+### Security and Privacy
+- **End-to-end encryption** — adding a password to a room encrypts all traffic (document updates, snapshots, cursors, names) with AES-256-GCM, using a PBKDF2-derived key (600,000 iterations, random per-room salt)
+- **Capability links** — an encrypted room has owner, editor, and viewer links; the role is defined by which private keys the link carries
+- **Cryptographic view-only** — viewer links contain no signing key, so any edit a viewer forces through is rejected by every other peer
+- **Owner-only rotation** — changing the password moves the room to a new epoch with a new editor key, and old links can no longer produce accepted edits
+- **Keys stay off the server** — the password and keys live in the URL fragment (after `#`), which browsers never send to a server
+- **Fail-closed link parsing** — a tampered or truncated invite link is rejected instead of silently opening an editable unencrypted room
+- **XSS hardening** — peer-supplied shape and presence fields are allow-listed before they reach the DOM, behind a `script-src 'self'` Content-Security-Policy with no inline scripts
+- **No accounts** — create a room and share the link
 
 ## Tech Stack
 
-- **Frontend**: Vanilla JavaScript (ES modules), HTML5 Canvas, CSS3
-- **Sync Engine**: [Y.js](https://yjs.dev/) (CRDT library) over a custom signed-update transport
-- **WebSocket Server**: [PartyKit](https://partykit.io/) (a ~35-line broadcast relay)
-- **Crypto**: Web Crypto API — AES-256-GCM for confidentiality, ECDSA P-256 for authorization
-- **Export**: [jsPDF](https://github.com/parallax/jsPDF) for PDF output; native canvas `toDataURL` for PNG
-- **Build Tool**: [Vite](https://vitejs.dev/) (multi-page build)
-- **Tests**: [Vitest](https://vitest.dev/)
-- **CI/CD**: GitHub Actions (Vitest + build gate); [Vercel](https://vercel.com/) for the frontend, PartyKit for the relay
+- **Frontend**: Vanilla JavaScript (ES modules), HTML5 Canvas, CSS
+- **Sync**: [Y.js](https://yjs.dev/) 13.6 CRDTs, with a custom signed-update protocol for document sync and `y-protocols` awareness for presence
+- **Relay**: [PartyKit](https://partykit.io/) — a broadcast-only WebSocket server (`party/index.ts`)
+- **Transport**: the browser's native `WebSocket`, with exponential-backoff reconnect (`js/sync-provider.js`)
+- **Crypto**: Web Crypto API — AES-256-GCM and PBKDF2 for confidentiality, ECDSA P-256 for authorization
+- **Local persistence**: IndexedDB via `y-indexeddb`; localStorage for board history and the snapshot cache
+- **Export**: [jsPDF](https://github.com/parallax/jsPDF) 4 for PDF; canvas `toDataURL` for PNG
+- **Build**: [Vite](https://vitejs.dev/) 8 in multi-page mode
+- **Tests**: [Vitest](https://vitest.dev/) 4 — 26 test files that run in Node with no DOM
+- **Hosting / CI**: [Vercel](https://vercel.com/) for the static frontend, PartyKit for the relay, GitHub Actions for tests, build, and relay deploys
 
 ## Getting Started
 
 ### Prerequisites
-- Node.js 20+ (CI builds on Node 24)
+- Node.js 20.19+ or 22.12+ (required by Vite 8; CI runs Node 24)
 - npm
 
 ### Installation
 
 ```bash
-# Clone the repository
 git clone https://github.com/Technical-1/Private-Collab-Whiteboard.git
 cd Private-Collab-Whiteboard
-
-# Install dependencies
 npm install
-
-# Start development server
 npm run dev
 ```
 
-The app will be available at `http://localhost:5173`
+The app runs at `http://localhost:5173`. `npm run dev` connects to the relay host set in `js/config.js` (`PARTYKIT_HOST`); `npm run dev:all` also starts a local PartyKit dev server alongside Vite.
 
 ### Development
 
 ```bash
-# Frontend dev server only
+# Frontend dev server (clean-URL routing mirrors vercel.json)
 npm run dev
 
-# Frontend + local PartyKit relay together
+# Frontend + local PartyKit dev server together
 npm run dev:all
 
 # Run the test suite
 npm test
 
-# Production build
+# Production build (landing, room, My Boards, and How it works pages)
 npm run build
+
+# Regenerate favicons from public/favicon.svg
+npm run generate-icons
 ```
 
 ### Deploy
 
 ```bash
-# Frontend (also runs automatically on push to main)
+# Frontend — Vercel deploys automatically from main; manual:
 vercel --prod
 
-# PartyKit relay (also runs in CI on push to main)
+# PartyKit relay — CI deploys on pushes to main that touch the server; manual:
 npm run deploy:party
 ```
 
 ## Usage
 
 ### Creating a Room
-1. Visit the homepage
-2. Enter a room name (or leave blank for random)
-3. Optionally set a password — this turns on end-to-end encryption and capability-based access
-4. Click "Create Room" — you become the room **owner**
+1. Visit the homepage and click **Create Room** (or **New Board** on My Boards). You get a fresh room with a random 16-character ID.
+2. The room starts **open**: anyone with the URL can draw.
+3. To make it private, click **Encrypt** in the room header and set a password. You become the room **owner**, and any drawings already on the board carry over into the encrypted room.
 
 ### Sharing a Room
-- **Open (no password)**: anyone with the room URL can edit. The link is the only access control.
-- **Encrypted**: use the in-room invite menu to mint an **editor** link (can draw) or a **viewer** link (read-only). The owner link is never shared — it stays in the creator's URL and is the only role that can rotate the room.
-- Each invite link embeds the capability in the URL fragment (after `#`), which never reaches the relay server.
+- **Open room**: share the URL. The link is the only access control, and traffic is not encrypted.
+- **Encrypted room**: click **Invite** to copy an **editor** link (can draw) or a **viewer** link (read-only). The owner link is never offered for sharing — it stays in the creator's address bar and is the only one that can rotate the room.
 
-### Rotating / Revoking Access
-- As the owner, change the password to rotate the room to a new epoch. Existing peers are told to stop, and old links no longer decrypt or sign — share the fresh link with the people who should keep access.
+### Rotating Access
+- As the owner, use **Change password**. The room moves to a new epoch, peers on the old epoch are told the room was rotated, and their edits stop being accepted. Share fresh invite links with the people who should keep access.
 
 ### Joining a Room
-- Open an invite link, or enter a room code on the homepage. For open rooms a bare room URL is enough; encrypted rooms require an invite link (the password alone is not a usable link).
+- Open an invite link, or paste a room code or full link into **Join** on the homepage. A bare room code is enough for an open room. An encrypted room can only be joined with an invite link, because the signing keys can't be derived from the password; opening one without a link shows an "Invite link required" notice.
 
 ### Keyboard Shortcuts
 
 | Shortcut | Action |
 |----------|--------|
 | `V` | Select tool |
-| `P` | Pencil/Freehand |
+| `P` | Pencil |
 | `H` | Highlighter |
-| `L` | Line tool |
-| `A` | Arrow tool |
-| `R` | Rectangle tool |
-| `C` | Circle tool |
-| `O` | Ellipse tool |
-| `D` | Diamond tool |
-| `Y` | Triangle tool |
-| `T` | Text tool |
+| `L` | Line |
+| `A` | Arrow |
+| `R` | Rectangle |
+| `C` | Circle |
+| `O` | Ellipse |
+| `D` | Diamond |
+| `Y` | Triangle |
+| `T` | Text |
 | `S` | Sticky note |
-| `G` | Connector tool |
+| `G` | Connector |
 | `Q` | Laser pointer |
-| `E` | Eraser |
+| `E` | Shape eraser |
 | `Ctrl/⌘ + Z` | Undo |
-| `Ctrl/⌘ + Y` | Redo |
-| `Ctrl/⌘ + C` | Copy |
-| `Ctrl/⌘ + V` | Paste |
-| `Ctrl/⌘ + D` | Duplicate |
-| `Delete/⌫` | Delete selected |
-| `Space + Drag` | Pan canvas |
-| `Scroll` | Zoom in/out |
+| `Ctrl/⌘ + Y` or `Ctrl/⌘ + Shift + Z` | Redo |
+| `Ctrl/⌘ + C` / `V` / `D` | Copy / Paste / Duplicate |
+| `Delete` / `⌫` | Delete selection |
+| `Escape` | Cancel / deselect |
+| `Shift + Click` | Add to selection |
+| `Space + Drag` | Pan |
+| `Scroll` | Zoom |
 | `?` | Show shortcuts |
 
-## Architecture
+## Project Structure
 
 ```
-├── index.html             # Landing page (create / join)
-├── room.html              # Main whiteboard app
-├── boards.html            # Board history page
-├── css/
-│   └── styles.css         # All styles
+├── index.html                # Landing page (create / join)
+├── room.html                 # The whiteboard
+├── boards.html               # My Boards (room history)
+├── how-it-works.html         # Public explainer page
+├── css/styles.css            # All styles
 ├── js/
-│   ├── app.js             # Main entry point, role-aware UI wiring
-│   ├── index-home.js      # Landing-page script (extracted for strict CSP)
-│   ├── boards-home.js     # Board-history page script (extracted for strict CSP)
-│   ├── yjs-setup.js       # Y.Doc init, transport + signed sync, rotation
-│   ├── sync-provider.js   # PartyKit WebSocket transport (AES + awareness)
-│   ├── signed-doc-sync.js # Signed-update doc sync; view-only enforcement
-│   ├── protocol.js        # Wire envelope + update signing/verification
-│   ├── crypto.js          # AES-256-GCM + ECDSA P-256 helpers
-│   ├── room-cert.js       # Owner-signed epoch certificates
-│   ├── room-manager.js    # Capability links (owner/editor/viewer), rotation
-│   ├── snapshot-store.js  # Per-epoch snapshot cache (localStorage, pruned)
-│   ├── awareness.js       # User presence & cursors
-│   ├── laser-trail.js     # Ephemeral laser-pointer trail (presence-only, never stored)
-│   ├── drawing.js         # Canvas rendering & interactions
-│   ├── draw-geometry.js   # Pure shape geometry (hit-testing, polygons, arrowheads)
-│   ├── connector-geometry.js # Connector anchor resolution & re-routing
-│   ├── text-wrap.js       # Word-wrap + scroll math for text and sticky notes
-│   ├── keyboard-intent.js # Pure keyboard-shortcut intent decisions (unit-testable)
-│   ├── shape-schema.js    # Sanitize untrusted shapes before DOM interpolation
-│   ├── boards.js          # Multi-board management (create / switch / clear / delete)
-│   ├── board-history.js   # Board visit history (localStorage)
-│   ├── undo-redo.js       # Undo/redo with Y.UndoManager
-│   ├── modal.js           # Modal dialog system
-│   ├── config.js          # App configuration
-│   └── utils.js           # Helpers + HTML/color/number/tool sanitizers
-├── party/
-│   └── index.ts           # PartyKit broadcast relay (~35 lines)
-├── tests/                 # Vitest suite (crypto, protocol, sync, links)
-├── .github/workflows/     # CI + PartyKit auto-deploy
-└── vercel.json            # Vercel hosting + CSP + URL rewrites
+│   ├── app.js                # Room entry point: toolbar, shortcuts, zoom/pan, export, role-aware UI
+│   ├── index-home.js         # Landing-page script
+│   ├── boards-home.js        # My Boards page script
+│   ├── how-it-works-home.js  # Explainer-page script
+│   ├── yjs-setup.js          # Y.Doc, IndexedDB, key derivation, sync wiring, rotation
+│   ├── sync-provider.js      # WebSocket transport: framing, AES, awareness, presence probe
+│   ├── signed-doc-sync.js    # Signed / open document sync and view-only enforcement
+│   ├── protocol.js           # Message types, envelope encoding, update signing
+│   ├── crypto.js             # AES-256-GCM, PBKDF2, ECDSA P-256 helpers
+│   ├── room-cert.js          # Owner-signed epoch certificates
+│   ├── room-manager.js       # Capability links (owner / editor / viewer), rotation
+│   ├── snapshot-store.js     # Per-epoch snapshot cache in localStorage
+│   ├── drawing.js            # Canvas rendering and interaction
+│   ├── draw-geometry.js      # Hit-testing, polygons, arrowheads, shape index
+│   ├── connector-geometry.js # Connector anchors and dangling-connector detection
+│   ├── text-wrap.js          # Word wrap and sticky-note scroll math
+│   ├── laser-trail.js        # Laser-trail pruning
+│   ├── keyboard-intent.js    # Delete-key decision
+│   ├── shape-schema.js       # Sanitizing and bounding untrusted shapes
+│   ├── awareness.js          # Presence, cursors, live previews, laser trails
+│   ├── boards.js             # Boards within a room (create / switch / rename / delete)
+│   ├── board-history.js      # My Boards history (localStorage)
+│   ├── undo-redo.js          # Y.UndoManager wrapper
+│   ├── modal.js              # Dialogs: prompt, confirm, invite, password, save, shortcuts
+│   ├── config.js             # Tunable constants
+│   └── utils.js              # IDs, colors, HTML escaping and allow-list sanitizers
+├── party/index.ts            # PartyKit broadcast relay
+├── public/                   # Favicons, OG image, robots.txt, sitemap.xml, web manifest
+├── scripts/generate-icons.js # Favicon generation with sharp
+├── tests/                    # Vitest suite
+├── .github/workflows/        # CI and PartyKit deploy
+└── vercel.json               # Clean URLs, /room/:id rewrite, CSP and security headers
 ```
 
 ### Data Model
 
 ```javascript
-// Y.js Document Structure (per room)
+// Y.Doc (one per room)
 {
-  boards: Y.Map {
-    'default': Y.Array [
-      { id, tool, x, y, color, user, ... },
-      ...
-    ],
-    'board-2': Y.Array [...],
+  boards: Y.Map {                 // board key -> shapes
+    'default': Y.Array [ { id, tool, color, user, timestamp, ...geometry }, ... ],
+    'Retro': Y.Array [ ... ],     // other boards are keyed by the name given at creation
+  },
+  boardNames: Y.Map {             // board key -> display label ('default' shows as "Main")
+    'default': 'Sprint planning',
   }
 }
 
-// Awareness (ephemeral state)
+// Awareness (ephemeral, never stored)
 {
-  user: {
-    id: string,
-    name: string,
-    color: string,
-    cursor: { x, y } | null,
-    currentDrawing: object | null
-  }
+  user: { id, name, color, currentBoard, cursor, currentDrawing, laser }
 }
 ```
 
-In encrypted rooms, Y.js updates aren't sent raw. Each update is wrapped in a
-signed envelope and only applied if the signature checks out:
+Document updates don't travel as raw Y.js updates. Each one is wrapped in an envelope:
 
 ```javascript
-// Wire envelope (encrypted rooms): epoch ‖ update ‖ signature
-// - editors sign updates with the per-epoch editor key (ECDSA P-256)
-// - the owner key signs an epoch certificate binding that editor key
-// - viewers have no signing key, so their updates never verify and are dropped
+// epoch ‖ update ‖ signature   (lib0 varint encoding, see js/protocol.js)
+// - encrypted rooms: editors sign (epoch ‖ update) with the epoch's ECDSA P-256 editor key
+// - the owner key signs a certificate binding that editor key to the epoch
+// - open rooms send an empty signature and skip verification
 { epoch, update, sig }
 ```
 
 ## Configuration
 
-Edit `js/config.js` to customize:
+`js/config.js` holds the tunable constants, for example:
 
 ```javascript
-// Zoom limits
 export const ZOOM_MIN = 0.1;
 export const ZOOM_MAX = 5;
-
-// Cursor update frequency (ms)
-export const CURSOR_UPDATE_INTERVAL = 50;
-
-// Undo grouping window (ms)
-export const UNDO_CAPTURE_TIMEOUT = 500;
+export const CURSOR_UPDATE_INTERVAL = 50;    // ms between cursor broadcasts
+export const PBKDF2_ITERATIONS = 600000;     // for newly encrypted rooms
+export const PARTYKIT_HOST = 'whiteboard-collab.technical-1.partykit.dev';
 ```
 
-## Contributing
-
-Contributions are welcome! Please feel free to submit a Pull Request.
-
-1. Fork the repository
-2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
-3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
-4. Push to the branch (`git push origin feature/AmazingFeature`)
-5. Open a Pull Request
+To run your own relay, change `name` in `partykit.json`, deploy it, and point `PARTYKIT_HOST` at the new host.
 
 ## License
 
@@ -262,10 +249,10 @@ No license — personal project, all rights reserved. The source is public to re
 
 ## Author
 
-Jacob Kanfer - [GitHub](https://github.com/Technical-1)
+Jacob Kanfer — [GitHub](https://github.com/Technical-1)
 
 ## Acknowledgments
 
-- [Y.js](https://yjs.dev/) - CRDT implementation
-- [PartyKit](https://partykit.io/) - Real-time infrastructure
-- [Vite](https://vitejs.dev/) - Build tooling
+- [Y.js](https://yjs.dev/) — CRDT implementation
+- [PartyKit](https://partykit.io/) — real-time infrastructure
+- [Vite](https://vitejs.dev/) — build tooling
